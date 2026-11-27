@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -781,28 +782,38 @@ class _Sidebar extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 18),
-        const Row(
+        Row(
           children: [
-            CircleAvatar(
+            const CircleAvatar(
               radius: 18,
               backgroundColor: Color(0xFFFFF3D6),
               child: Text('AM', style: TextStyle(fontSize: 11, color: ink)),
             ),
-            SizedBox(width: 10),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Mastery Admin',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    FirebaseAuth.instance.currentUser?.displayName ??
+                        'Mastery Admin',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   Text(
-                    'admin@mastery.pl',
-                    style: TextStyle(fontSize: 10, color: mutedInk),
+                    FirebaseAuth.instance.currentUser?.email ?? '',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10, color: mutedInk),
                   ),
                 ],
               ),
+            ),
+            IconButton(
+              tooltip: 'Sign out',
+              onPressed: FirebaseAuth.instance.signOut,
+              icon: const Icon(Icons.logout, size: 18),
             ),
           ],
         ),

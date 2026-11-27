@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../features/contacts/domain/contact_repository.dart';
 import '../features/contacts/presentation/contacts_page.dart';
+import '../features/auth/presentation/auth_gate.dart';
 import 'theme/app_theme.dart';
 
 class MasteryEmailApp extends StatelessWidget {
@@ -13,7 +14,6 @@ class MasteryEmailApp extends StatelessWidget {
     title: 'Mastery Email',
     debugShowCheckedModeBanner: false,
     theme: buildAppTheme(),
-    initialRoute: '/contacts',
-    routes: {'/contacts': (_) => ContactsPage(repository: repository)},
+    home: AuthGate(child: ContactsPage(repository: repository)),
   );
 }

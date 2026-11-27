@@ -27,10 +27,11 @@ flutter build web
 
 The deployed prototype uses the Firebase project `mastery-crm-515920` and the
 Firestore collections `companies`, `contacts`, and `contactEmailIndex`.
-The client opens an anonymous Firebase Auth session before accessing Firestore;
-security rules reject unauthenticated requests.
+The client signs in with a verified corporate Firebase Auth account before
+accessing Firestore. Security rules allow only the Alex, Olga, and Grace
+accounts from `themasterycompany.com`.
 
 Cloud Functions CRUD handlers are included under `functions/`. The current
 Spark project cannot deploy them until billing is attached, so the web runtime
-uses the Firestore repository directly. Named accounts and role-based access
-can be added when the prototype moves beyond its single shared admin role.
+uses the Firestore repository directly. All three current users have the same
+admin role.
