@@ -151,13 +151,29 @@ class ContactController extends ChangeNotifier {
     company ??= companies
         .where(
           (item) =>
-              item.name.trim().toLowerCase() ==
-              value.companyName.trim().toLowerCase(),
+              _normalizeIdentity(item.name) ==
+              _normalizeIdentity(value.companyName),
         )
         .firstOrNull;
     final names = splitFullName(value.fullName);
+    final companyName = value.companyName.trim();
+    final identityMatch = contacts
+        .where(
+          (contact) =>
+              _contactIdentityKey(contact) ==
+              _identityKey(companyName, '${names.firstName} ${names.lastName}'),
+        )
+        .firstOrNull;
+    if (existing != null &&
+        identityMatch != null &&
+        identityMatch.id != existing.id) {
+      throw StateError(
+        'A contact with this company and full name already exists.',
+      );
+    }
+    final target = existing ?? identityMatch;
     final contact = Contact(
-      id: existing?.id ?? '',
+      id: target?.id ?? '',
       companyId: company?.id ?? '',
       firstName: names.firstName,
       lastName: names.lastName,
@@ -182,12 +198,12 @@ class ContactController extends ChangeNotifier {
           .toList(),
       canReceiveCampaignEmails:
           value.primaryEmailId != null && value.canReceiveCampaignEmails,
-      createdAt: existing?.createdAt ?? now,
+      createdAt: target?.createdAt ?? now,
       updatedAt: now,
     );
     try {
       final saved = await _repository.saveContact(
-        ContactWrite(contact: contact, companyName: value.companyName.trim()),
+        ContactWrite(contact: contact, companyName: companyName),
       );
       await reload();
       return contacts.firstWhere((item) => item.id == saved.id);
@@ -233,12 +249,18 @@ class ContactController extends ChangeNotifier {
     var skipped = 0;
     final errors = <String>[];
     final writes = <ContactWrite>[];
+    final pendingIndexes = <String, int>{};
+    final existingByIdentity = <String, Contact>{
+      for (final contact in contacts) _contactIdentityKey(contact): contact,
+    };
     for (var rowIndex = 1; rowIndex < rows.length; rowIndex++) {
       final row = rows[rowIndex];
       String cell(String name) {
         final index = indexes[name.toLowerCase()];
         return index == null || index >= row.length ? '' : row[index].trim();
       }
+
+      bool hasColumn(String name) => indexes.containsKey(name.toLowerCase());
 
       final company = cell('Company');
       final fullName = cell('Full name');
@@ -248,47 +270,69 @@ class ContactController extends ChangeNotifier {
         errors.add('Row ${rowIndex + 1}: Company and Full name are required.');
         continue;
       }
+      final identity = _identityKey(company, fullName);
+      final existing = existingByIdentity[identity];
       if (email.isNotEmpty &&
           contacts.any(
-            (contact) => contact.emails.any(
-              (item) => normalizeEmail(item.address) == email,
-            ),
+            (contact) =>
+                contact.id != existing?.id &&
+                contact.emails.any(
+                  (item) => normalizeEmail(item.address) == email,
+                ),
           )) {
         skipped++;
         errors.add('Row ${rowIndex + 1}: $email already exists.');
         continue;
       }
-      final emailId = email.isEmpty ? null : _id('email');
       final names = splitFullName(fullName);
       final now = DateTime.now().toUtc();
-      writes.add(
-        ContactWrite(
-          companyName: company,
-          contact: Contact(
-            id: '',
-            companyId: '',
-            firstName: names.firstName,
-            lastName: names.lastName,
-            emails: emailId == null
-                ? const []
-                : [ContactEmail(id: emailId, address: email, label: 'Work')],
-            primaryEmailId: emailId,
-            role: _blankToNull(cell('Role')),
-            source: _blankToNull(cell('Event / Source')),
-            linkedinUrl: _blankToNull(cell('LinkedIn URL')),
-            segments: cell('Segments')
-                .split(RegExp(r'[,;]'))
-                .map((item) => item.trim())
-                .where((item) => item.isNotEmpty)
-                .toSet()
-                .toList(),
-            canReceiveCampaignEmails:
-                emailId != null && _isYes(cell('Include in email outreach')),
-            createdAt: now,
-            updatedAt: now,
-          ),
-        ),
+      final previousPendingIndex = pendingIndexes[identity];
+      final current = previousPendingIndex == null
+          ? existing
+          : writes[previousPendingIndex].contact;
+      final emailState = _importEmails(current, email);
+      final candidate = Contact(
+        id: current?.id ?? '',
+        companyId: current?.companyId ?? '',
+        firstName: names.firstName,
+        lastName: names.lastName,
+        emails: emailState.emails,
+        primaryEmailId: emailState.primaryEmailId,
+        role: hasColumn('Role') ? _blankToNull(cell('Role')) : current?.role,
+        source: hasColumn('Event / Source')
+            ? _blankToNull(cell('Event / Source'))
+            : current?.source,
+        linkedinUrl: hasColumn('LinkedIn URL')
+            ? _blankToNull(cell('LinkedIn URL'))
+            : current?.linkedinUrl,
+        segments: hasColumn('Segments')
+            ? cell('Segments')
+                  .split(RegExp(r'[,;]'))
+                  .map((item) => item.trim())
+                  .where((item) => item.isNotEmpty)
+                  .toSet()
+                  .toList()
+            : current?.segments ?? const [],
+        canReceiveCampaignEmails:
+            emailState.primaryEmailId != null &&
+            (hasColumn('Include in email outreach')
+                ? _isYes(cell('Include in email outreach'))
+                : current?.canReceiveCampaignEmails ?? false),
+        createdAt: current?.createdAt ?? now,
+        updatedAt: now,
       );
+      if (current != null && _sameContactData(current, candidate)) {
+        skipped++;
+        continue;
+      }
+      final write = ContactWrite(contact: candidate, companyName: company);
+      if (previousPendingIndex == null) {
+        pendingIndexes[identity] = writes.length;
+        writes.add(write);
+      } else {
+        writes[previousPendingIndex] = write;
+        skipped++;
+      }
     }
     if (writes.isEmpty) {
       return ImportResult(imported: 0, skipped: skipped, errors: errors);
@@ -338,6 +382,68 @@ class ContactController extends ChangeNotifier {
   bool _isYes(String value) =>
       {'yes', 'true', '1', 'y'}.contains(value.trim().toLowerCase());
 
+  String _contactIdentityKey(Contact contact) {
+    final companyName = companies
+        .where((company) => company.id == contact.companyId)
+        .firstOrNull
+        ?.name;
+    return _identityKey(companyName ?? contact.companyId, contact.fullName);
+  }
+
+  String _identityKey(String companyName, String fullName) =>
+      '${_normalizeIdentity(companyName)}\u0000${_normalizeIdentity(fullName)}';
+
+  String _normalizeIdentity(String value) =>
+      value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+
+  _ImportedEmailState _importEmails(Contact? existing, String email) {
+    if (email.isEmpty) {
+      return _ImportedEmailState(
+        emails: existing?.emails ?? const [],
+        primaryEmailId: existing?.primaryEmailId,
+      );
+    }
+    final matching = existing?.emails
+        .where((item) => normalizeEmail(item.address) == email)
+        .firstOrNull;
+    if (matching != null) {
+      return _ImportedEmailState(
+        emails: existing!.emails,
+        primaryEmailId: matching.id,
+      );
+    }
+    final added = ContactEmail(id: _id('email'), address: email, label: 'Work');
+    return _ImportedEmailState(
+      emails: [...?existing?.emails, added],
+      primaryEmailId: added.id,
+    );
+  }
+
+  bool _sameContactData(Contact left, Contact right) {
+    String optional(String? value) => _normalizeIdentity(value ?? '');
+    List<String> emails(Contact contact) =>
+        contact.emails
+            .map(
+              (email) =>
+                  '${normalizeEmail(email.address)}\u0000${optional(email.label)}',
+            )
+            .toList()
+          ..sort();
+    List<String> segments(Contact contact) =>
+        contact.segments.map(_normalizeIdentity).toList()..sort();
+
+    return optional(left.firstName) == optional(right.firstName) &&
+        optional(left.lastName) == optional(right.lastName) &&
+        optional(left.role) == optional(right.role) &&
+        optional(left.linkedinUrl) == optional(right.linkedinUrl) &&
+        optional(left.source) == optional(right.source) &&
+        listEquals(emails(left), emails(right)) &&
+        listEquals(segments(left), segments(right)) &&
+        normalizeEmail(left.primaryEmail?.address ?? '') ==
+            normalizeEmail(right.primaryEmail?.address ?? '') &&
+        left.canReceiveCampaignEmails == right.canReceiveCampaignEmails;
+  }
+
   String _errorMessage(Object error) {
     final message = error.toString();
     return message
@@ -345,6 +451,12 @@ class ContactController extends ChangeNotifier {
         .replaceFirst('Exception: ', '')
         .replaceFirst(RegExp(r'^\[cloud_functions/[^]]+\]\s*'), '');
   }
+}
+
+class _ImportedEmailState {
+  const _ImportedEmailState({required this.emails, this.primaryEmailId});
+  final List<ContactEmail> emails;
+  final String? primaryEmailId;
 }
 
 class CompanyContactGroup {

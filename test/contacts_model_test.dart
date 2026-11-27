@@ -106,6 +106,194 @@ void main() {
     expect(repository.imported.single.contact.primaryEmailId, isNull);
     controller.dispose();
   });
+
+  test(
+    'imports a CSV contact with a blank email and disables outreach',
+    () async {
+      final repository = _CapturingContactRepository();
+      final controller = ContactController(repository);
+      await Future<void>.delayed(Duration.zero);
+
+      final result = await controller.importCsv(
+        'Company,Full name,Primary email,Include in email outreach\n'
+        'Northstar,Future Contact,,Yes',
+      );
+
+      final contact = repository.imported.single.contact;
+      expect(result.imported, 1);
+      expect(contact.emails, isEmpty);
+      expect(contact.primaryEmailId, isNull);
+      expect(contact.canReceiveCampaignEmails, isFalse);
+      controller.dispose();
+    },
+  );
+
+  test('skips an unchanged contact with the same company and name', () async {
+    final now = DateTime.utc(2026, 11, 27);
+    final repository = _CapturingContactRepository(
+      directory: ContactDirectory(
+        companies: [
+          Company(
+            id: 'company-1',
+            name: 'Northstar',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+        contacts: [
+          Contact(
+            id: 'contact-1',
+            companyId: 'company-1',
+            firstName: 'Anna',
+            lastName: 'Kowalska',
+            emails: const [],
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+      ),
+    );
+    final controller = ContactController(repository);
+    await Future<void>.delayed(Duration.zero);
+
+    final result = await controller.importCsv(
+      'Company,Full name\n northstar ,  ANNA   KOWALSKA ',
+    );
+
+    expect(result.imported, 0);
+    expect(result.skipped, 1);
+    expect(repository.imported, isEmpty);
+    controller.dispose();
+  });
+
+  test('updates an existing contact when imported data changed', () async {
+    final now = DateTime.utc(2026, 11, 27);
+    final repository = _CapturingContactRepository(
+      directory: ContactDirectory(
+        companies: [
+          Company(
+            id: 'company-1',
+            name: 'Northstar',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+        contacts: [
+          Contact(
+            id: 'contact-1',
+            companyId: 'company-1',
+            firstName: 'Anna',
+            lastName: 'Kowalska',
+            emails: const [],
+            role: 'Marketing Manager',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+      ),
+    );
+    final controller = ContactController(repository);
+    await Future<void>.delayed(Duration.zero);
+
+    final result = await controller.importCsv(
+      'Company,Full name,Role\nNorthstar,Anna Kowalska,CMO',
+    );
+
+    expect(result.imported, 1);
+    expect(result.skipped, 0);
+    expect(repository.imported.single.contact.id, 'contact-1');
+    expect(repository.imported.single.contact.role, 'CMO');
+    controller.dispose();
+  });
+
+  test('missing optional CSV columns do not clear existing data', () async {
+    final now = DateTime.utc(2026, 11, 27);
+    final repository = _CapturingContactRepository(
+      directory: ContactDirectory(
+        companies: [
+          Company(
+            id: 'company-1',
+            name: 'Northstar',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+        contacts: [
+          Contact(
+            id: 'contact-1',
+            companyId: 'company-1',
+            firstName: 'Anna',
+            lastName: 'Kowalska',
+            emails: const [],
+            role: 'Marketing Manager',
+            source: 'Conference',
+            segments: const ['Lead'],
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+      ),
+    );
+    final controller = ContactController(repository);
+    await Future<void>.delayed(Duration.zero);
+
+    final result = await controller.importCsv(
+      'Company,Full name\nNorthstar,Anna Kowalska',
+    );
+
+    expect(result.imported, 0);
+    expect(result.skipped, 1);
+    expect(repository.imported, isEmpty);
+    controller.dispose();
+  });
+
+  test(
+    'a blank imported email does not erase known emails on update',
+    () async {
+      final now = DateTime.utc(2026, 11, 27);
+      final repository = _CapturingContactRepository(
+        directory: ContactDirectory(
+          companies: [
+            Company(
+              id: 'company-1',
+              name: 'Northstar',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          ],
+          contacts: [
+            Contact(
+              id: 'contact-1',
+              companyId: 'company-1',
+              firstName: 'Anna',
+              lastName: 'Kowalska',
+              emails: const [
+                ContactEmail(id: 'email-1', address: 'anna@northstar.co'),
+              ],
+              primaryEmailId: 'email-1',
+              role: 'Manager',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          ],
+        ),
+      );
+      final controller = ContactController(repository);
+      await Future<void>.delayed(Duration.zero);
+
+      final result = await controller.importCsv(
+        'Company,Full name,Primary email,Role\n'
+        'Northstar,Anna Kowalska,,CMO',
+      );
+
+      expect(result.imported, 1);
+      final updated = repository.imported.single.contact;
+      expect(updated.id, 'contact-1');
+      expect(updated.primaryEmail?.address, 'anna@northstar.co');
+      expect(updated.role, 'CMO');
+      controller.dispose();
+    },
+  );
 }
 
 class _EmptyContactRepository implements ContactRepository {
@@ -126,7 +314,15 @@ class _EmptyContactRepository implements ContactRepository {
 }
 
 class _CapturingContactRepository extends _EmptyContactRepository {
+  _CapturingContactRepository({
+    this.directory = const ContactDirectory(companies: [], contacts: []),
+  });
+
+  final ContactDirectory directory;
   final List<ContactWrite> imported = [];
+
+  @override
+  Future<ContactDirectory> load() async => directory;
 
   @override
   Future<ImportSummary> importContacts(List<ContactWrite> contacts) async {

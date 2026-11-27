@@ -18,6 +18,8 @@ class FirestoreContactRepository implements ContactRepository {
       _firestore.collection('contacts');
   CollectionReference<Map<String, dynamic>> get _emailIndex =>
       _firestore.collection('contactEmailIndex');
+  CollectionReference<Map<String, dynamic>> get _identityIndex =>
+      _firestore.collection('contactIdentityIndex');
 
   @override
   Future<ContactDirectory> load() async {
@@ -38,11 +40,26 @@ class FirestoreContactRepository implements ContactRepository {
     final companyName = value.companyName.trim();
     final companyId = contact.companyId.isNotEmpty
         ? contact.companyId
-        : 'company_${_hash(companyName.toLowerCase()).substring(0, 24)}';
+        : 'company_${_hash(_normalizeIdentity(companyName)).substring(0, 24)}';
     final companyRef = _companies.doc(companyId);
-    final contactRef = contact.id.isEmpty
-        ? _contacts.doc()
-        : _contacts.doc(contact.id);
+    final normalizedFullName = _normalizeIdentity(contact.fullName);
+    final identityKey = _identityKey(companyId, normalizedFullName);
+    var contactId = contact.id;
+    if (contactId.isEmpty) {
+      final indexed = await _identityIndex.doc(identityKey).get();
+      contactId = indexed.data()?['contactId']?.toString() ?? '';
+    }
+    if (contactId.isEmpty) {
+      final legacy = await _contacts
+          .where('companyId', isEqualTo: companyId)
+          .where('normalizedFullName', isEqualTo: normalizedFullName)
+          .limit(1)
+          .get();
+      contactId = legacy.docs.firstOrNull?.id ?? '';
+    }
+    final contactRef = contactId.isEmpty
+        ? _contacts.doc('contact_${identityKey.substring(0, 24)}')
+        : _contacts.doc(contactId);
     final newKeys = {
       for (final email in contact.emails) _hash(normalizeEmail(email.address)),
     };
@@ -50,6 +67,9 @@ class FirestoreContactRepository implements ContactRepository {
     await _firestore.runTransaction((transaction) async {
       final existingContact = await transaction.get(contactRef);
       final existingCompany = await transaction.get(companyRef);
+      final identityOwner = await transaction.get(
+        _identityIndex.doc(identityKey),
+      );
       final owners = <DocumentSnapshot<Map<String, dynamic>>>[];
       for (final key in newKeys) {
         owners.add(await transaction.get(_emailIndex.doc(key)));
@@ -59,6 +79,23 @@ class FirestoreContactRepository implements ContactRepository {
           throw StateError(
             'Email ${owner.data()?['email']} already belongs to another contact.',
           );
+        }
+      }
+      if (identityOwner.exists &&
+          identityOwner.data()?['contactId'] != contactRef.id) {
+        throw StateError(
+          'A contact with this company and full name already exists.',
+        );
+      }
+
+      final oldCompanyId = existingContact.data()?['companyId']?.toString();
+      final oldFullName = existingContact
+          .data()?['normalizedFullName']
+          ?.toString();
+      if (oldCompanyId != null && oldFullName != null) {
+        final oldIdentityKey = _identityKey(oldCompanyId, oldFullName);
+        if (oldIdentityKey != identityKey) {
+          transaction.delete(_identityIndex.doc(oldIdentityKey));
         }
       }
 
@@ -85,7 +122,7 @@ class FirestoreContactRepository implements ContactRepository {
         'companyId': companyId,
         'firstName': contact.firstName.trim(),
         'lastName': contact.lastName.trim(),
-        'normalizedFullName': contact.fullName.toLowerCase(),
+        'normalizedFullName': normalizedFullName,
         'emails': contact.emails
             .map(
               (email) => {
@@ -112,6 +149,12 @@ class FirestoreContactRepository implements ContactRepository {
           'updatedAt': now,
         });
       }
+      transaction.set(_identityIndex.doc(identityKey), {
+        'contactId': contactRef.id,
+        'companyId': companyId,
+        'normalizedFullName': normalizedFullName,
+        'updatedAt': now,
+      });
     });
     return SavedContactReference(id: contactRef.id, companyId: companyId);
   }
@@ -127,6 +170,13 @@ class FirestoreContactRepository implements ContactRepository {
       for (final email in emails) {
         final address = email['address']?.toString() ?? '';
         transaction.delete(_emailIndex.doc(_hash(normalizeEmail(address))));
+      }
+      final companyId = snapshot.data()?['companyId']?.toString();
+      final fullName = snapshot.data()?['normalizedFullName']?.toString();
+      if (companyId != null && fullName != null) {
+        transaction.delete(
+          _identityIndex.doc(_identityKey(companyId, fullName)),
+        );
       }
       transaction.delete(contactRef);
     });
@@ -169,6 +219,12 @@ class FirestoreContactRepository implements ContactRepository {
       throw StateError('A contact without emails cannot have a primary email.');
     }
   }
+
+  String _normalizeIdentity(String value) =>
+      value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+
+  String _identityKey(String companyId, String normalizedFullName) =>
+      _hash('$companyId\n$normalizedFullName');
 
   Company _companyFromDocument(
     QueryDocumentSnapshot<Map<String, dynamic>> document,

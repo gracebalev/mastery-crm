@@ -41,6 +41,12 @@ exports.contactDelete = onCall(callableOptions, async (request) => {
     for (const email of emails) {
       transaction.delete(db.collection("contactEmailIndex").doc(emailKey(email.address)));
     }
+    const companyId = snapshot.data().companyId;
+    const normalizedFullName = snapshot.data().normalizedFullName;
+    if (companyId && normalizedFullName) {
+      transaction.delete(db.collection("contactIdentityIndex")
+          .doc(identityKey(companyId, normalizedFullName)));
+    }
     transaction.delete(contactRef);
   });
   return {deleted: true};
@@ -69,17 +75,41 @@ exports.contactsImport = onCall({...callableOptions, timeoutSeconds: 540}, async
 
 async function saveContact(input) {
   const value = validateContact(input);
-  const companyId = value.companyId || stableId("company", value.companyName.toLowerCase());
+  const companyId = value.companyId || stableId("company", normalizeIdentity(value.companyName));
   const companyRef = db.collection("companies").doc(companyId);
-  const contactRef = value.id ? db.collection("contacts").doc(value.id) : db.collection("contacts").doc();
+  const normalizedFullName = normalizeIdentity(`${value.firstName} ${value.lastName}`);
+  const contactIdentityKey = identityKey(companyId, normalizedFullName);
+  let contactId = value.id;
+  if (!contactId) {
+    const indexed = await db.collection("contactIdentityIndex").doc(contactIdentityKey).get();
+    contactId = indexed.data()?.contactId || "";
+  }
+  if (!contactId) {
+    const legacy = await db.collection("contacts")
+        .where("companyId", "==", companyId)
+        .where("normalizedFullName", "==", normalizedFullName)
+        .limit(1)
+        .get();
+    contactId = legacy.docs[0]?.id || "";
+  }
+  contactId = contactId || stableId("contact", `${companyId}\n${normalizedFullName}`);
+  const contactRef = db.collection("contacts").doc(contactId);
   const newEmailKeys = new Set(value.emails.map((email) => emailKey(email.address)));
 
   await db.runTransaction(async (transaction) => {
-    const [existingContact, existingCompany, ...emailOwners] = await Promise.all([
+    const identityRef = db.collection("contactIdentityIndex").doc(contactIdentityKey);
+    const [existingContact, existingCompany, identityOwner, ...emailOwners] = await Promise.all([
       transaction.get(contactRef),
       transaction.get(companyRef),
+      transaction.get(identityRef),
       ...[...newEmailKeys].map((key) => transaction.get(db.collection("contactEmailIndex").doc(key))),
     ]);
+    if (identityOwner.exists && identityOwner.data().contactId !== contactRef.id) {
+      throw new HttpsError(
+          "already-exists",
+          "A contact with this company and full name already exists.",
+      );
+    }
     for (const owner of emailOwners) {
       if (owner.exists && owner.data().contactId !== contactRef.id) {
         throw new HttpsError("already-exists", `Email ${owner.data().email} already belongs to another contact.`);
@@ -90,6 +120,16 @@ async function saveContact(input) {
     for (const email of oldEmails) {
       const key = emailKey(email.address);
       if (!newEmailKeys.has(key)) transaction.delete(db.collection("contactEmailIndex").doc(key));
+    }
+    if (existingContact.exists) {
+      const oldCompanyId = existingContact.data().companyId;
+      const oldFullName = existingContact.data().normalizedFullName;
+      if (oldCompanyId && oldFullName) {
+        const oldKey = identityKey(oldCompanyId, oldFullName);
+        if (oldKey !== contactIdentityKey) {
+          transaction.delete(db.collection("contactIdentityIndex").doc(oldKey));
+        }
+      }
     }
 
     const now = FieldValue.serverTimestamp();
@@ -105,7 +145,7 @@ async function saveContact(input) {
       companyId,
       firstName: value.firstName,
       lastName: value.lastName,
-      normalizedFullName: `${value.firstName} ${value.lastName}`.trim().toLowerCase(),
+      normalizedFullName,
       emails: value.emails,
       primaryEmailId: value.primaryEmailId,
       role: value.role,
@@ -123,6 +163,12 @@ async function saveContact(input) {
         updatedAt: now,
       });
     }
+    transaction.set(identityRef, {
+      contactId: contactRef.id,
+      companyId,
+      normalizedFullName,
+      updatedAt: now,
+    });
   });
   return {id: contactRef.id, companyId};
 }
@@ -170,6 +216,14 @@ function stringValue(value) {
 }
 function normalizeEmail(value) {
   return value.trim().toLowerCase();
+}
+function normalizeIdentity(value) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+function identityKey(companyId, normalizedFullName) {
+  return crypto.createHash("sha256")
+      .update(`${companyId}\n${normalizeIdentity(normalizedFullName)}`)
+      .digest("hex");
 }
 function emailKey(email) {
   return crypto.createHash("sha256").update(normalizeEmail(email)).digest("hex");

@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../core/utils/csv_file_io.dart';
+import '../../../core/utils/external_link.dart';
 import '../domain/contact_repository.dart';
 import '../domain/entities.dart';
 import 'contact_controller.dart';
@@ -727,37 +728,66 @@ class _ContactRow extends StatelessWidget {
         ),
         Expanded(
           flex: 3,
-          child: Text(
-            contact.linkedinUrl ?? '—',
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: contact.linkedinUrl == null ? mutedInk : brandPurple,
-              decoration: contact.linkedinUrl == null
-                  ? null
-                  : TextDecoration.underline,
-            ),
-          ),
+          child: contact.linkedinUrl == null
+              ? const Text('—', style: TextStyle(color: mutedInk))
+              : Align(
+                  alignment: Alignment.centerLeft,
+                  child: Tooltip(
+                    message: contact.linkedinUrl!,
+                    child: TextButton.icon(
+                      onPressed: () => openExternalLink(contact.linkedinUrl!),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 13),
+                      label: const Text('LinkedIn'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: brandPurple,
+                        backgroundColor: const Color(0xFFF7F3FF),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        textStyle: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: const BorderSide(color: Color(0xFFDDD0FA)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
         ),
         Expanded(
           flex: 2,
           child: contact.segments.isEmpty
               ? const Text('—', style: TextStyle(color: mutedInk))
-              : Tooltip(
-                  message: contact.segments.join(', '),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFE8FF),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Text(
-                      contact.segments.join(', '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: brandPurple, fontSize: 12),
+              : Align(
+                  alignment: Alignment.centerLeft,
+                  child: Tooltip(
+                    message: contact.segments.join(', '),
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 88),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFE8FF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        contact.segments.join(', '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: brandPurple,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                 ),

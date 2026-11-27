@@ -24,5 +24,9 @@ service cloud.firestore {
     match /contactEmailIndex/{emailKey} {
       allow read, create, update, delete: if signedIn();
     }
+
+    match /contactIdentityIndex/{identityKey} {
+      allow read, create, update, delete: if signedIn();
+    }
   }
 }
