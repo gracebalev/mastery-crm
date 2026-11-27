@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1087367885966",
+    "project_id": "mastery-crm-515920",
+    "storage_bucket": "mastery-crm-515920.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1087367885966:android:df9ab93d4ae38caeb885df",
+        "android_client_info": {
+          "package_name": "com.mastery.crm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANTgTMx376XS0KIRLe4Z-yc6TkDvGnaTA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1087367885966:android:c740a23f63594470b885df",
+        "android_client_info": {
+          "package_name": "com.themasterycompany.masterycrm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANTgTMx376XS0KIRLe4Z-yc6TkDvGnaTA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

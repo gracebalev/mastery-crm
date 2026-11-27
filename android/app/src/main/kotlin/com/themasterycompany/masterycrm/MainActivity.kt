@@ -1,4 +1,4 @@
-package pl.mastery.mastery_email
+package com.themasterycompany.masterycrm
 
 import io.flutter.embedding.android.FlutterActivity
 
