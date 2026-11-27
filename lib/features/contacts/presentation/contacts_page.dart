@@ -18,6 +18,7 @@ class ContactsPage extends StatefulWidget {
 
 class _ContactsPageState extends State<ContactsPage> {
   late final ContactController _controller;
+  bool _isImporting = false;
 
   @override
   void initState() {
@@ -180,9 +181,9 @@ class _ContactsPageState extends State<ContactsPage> {
         ),
         const Spacer(),
         TextButton.icon(
-          onPressed: _importCsv,
+          onPressed: _isImporting ? null : _importCsv,
           icon: const Icon(Icons.upload_file, size: 18),
-          label: const Text('Import CSV'),
+          label: Text(_isImporting ? 'Importing...' : 'Import CSV'),
         ),
         const SizedBox(width: 4),
         TextButton.icon(
@@ -263,9 +264,9 @@ class _ContactsPageState extends State<ContactsPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               OutlinedButton.icon(
-                onPressed: _importCsv,
+                onPressed: _isImporting ? null : _importCsv,
                 icon: const Icon(Icons.upload_file),
-                label: const Text('Import CSV'),
+                label: Text(_isImporting ? 'Importing...' : 'Import CSV'),
               ),
               const SizedBox(width: 10),
               ElevatedButton(
@@ -308,34 +309,104 @@ class _ContactsPageState extends State<ContactsPage> {
   );
 
   Future<void> _importCsv() async {
+    if (_isImporting) return;
     final source = await pickCsvFile();
     if (!mounted || source == null) return;
+
+    setState(() => _isImporting = true);
+    final progressDialog = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            SizedBox(width: 18),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Importing contacts',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Please keep this page open while the CSV is processed.',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
     ImportResult result;
     try {
       result = await _controller.importCsv(source);
+      if (result.imported > 0) await _controller.reload();
     } on StateError catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
-      return;
+      result = ImportResult(imported: 0, skipped: 0, errors: [error.message]);
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        await progressDialog;
+        setState(() => _isImporting = false);
+      }
     }
     if (!mounted) return;
+
+    final isFailure = result.imported == 0;
+    final hasSkippedRows = result.skipped > 0 || result.errors.isNotEmpty;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('CSV import complete'),
+        icon: Icon(
+          isFailure
+              ? Icons.error_outline
+              : hasSkippedRows
+              ? Icons.warning_amber_rounded
+              : Icons.check_circle_outline,
+          color: isFailure
+              ? Theme.of(context).colorScheme.error
+              : hasSkippedRows
+              ? Colors.orange.shade700
+              : Colors.green.shade700,
+          size: 40,
+        ),
+        title: Text(
+          isFailure
+              ? 'Import failed'
+              : hasSkippedRows
+              ? 'Import completed with skipped rows'
+              : 'Import successful',
+        ),
         content: SizedBox(
           width: 480,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${result.imported} imported · ${result.skipped} skipped'),
+              Text(
+                isFailure
+                    ? 'No contacts were imported.'
+                    : '${result.imported} contacts imported. The list has been refreshed.',
+              ),
+              if (result.skipped > 0) ...[
+                const SizedBox(height: 6),
+                Text('${result.skipped} rows skipped.'),
+              ],
               if (result.errors.isNotEmpty) ...[
                 const SizedBox(height: 14),
-                const Text(
-                  'Skipped rows',
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                Text(
+                  isFailure ? 'What went wrong' : 'Skipped rows',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
                 ConstrainedBox(
