@@ -1,5 +1,7 @@
 # Mastery Email
 
+Corporate source repository: https://github.com/gracebalev/mastery-crm
+
 Flutter Web prototype for Mastery's internal contact and email outreach workflow.
 
 ## Contacts release
