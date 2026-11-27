@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 const brandPurple = Color(0xFF6D3CEB);
 const ink = Color(0xFF171521);
 const mutedInk = Color(0xFF6F6B7A);
+const placeholderInk = Color(0xFFAAA6B2);
 const canvasColor = Color(0xFFF6F5F8);
 const borderColor = Color(0xFFE8E5ED);
 
@@ -55,6 +56,10 @@ ThemeData buildAppTheme() {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Colors.white,
+      hintStyle: const TextStyle(
+        color: placeholderInk,
+        fontWeight: FontWeight.w400,
+      ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(9),
