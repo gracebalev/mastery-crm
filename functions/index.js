@@ -1,0 +1,194 @@
+const crypto = require("node:crypto");
+const {initializeApp} = require("firebase-admin/app");
+const {FieldValue, Timestamp, getFirestore} = require("firebase-admin/firestore");
+const {setGlobalOptions} = require("firebase-functions/v2");
+const {HttpsError, onCall} = require("firebase-functions/v2/https");
+
+initializeApp();
+setGlobalOptions({region: "us-east1", maxInstances: 10});
+
+const db = getFirestore();
+const callableOptions = {
+  cors: [
+    "https://alexmardas.github.io",
+    /http:\/\/localhost(:\d+)?/,
+    /http:\/\/127\.0\.0\.1(:\d+)?/,
+  ],
+};
+
+exports.contactsList = onCall(callableOptions, async () => {
+  const [companySnapshot, contactSnapshot] = await Promise.all([
+    db.collection("companies").orderBy("normalizedName").get(),
+    db.collection("contacts").orderBy("normalizedFullName").get(),
+  ]);
+  return {
+    companies: companySnapshot.docs.map((document) => serializeDocument(document)),
+    contacts: contactSnapshot.docs.map((document) => serializeDocument(document)),
+  };
+});
+
+exports.contactSave = onCall(callableOptions, async (request) => {
+  return saveContact(request.data);
+});
+
+exports.contactDelete = onCall(callableOptions, async (request) => {
+  const contactId = requiredString(request.data?.contactId, "contactId");
+  const contactRef = db.collection("contacts").doc(contactId);
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(contactRef);
+    if (!snapshot.exists) throw new HttpsError("not-found", "Contact not found.");
+    const emails = Array.isArray(snapshot.data().emails) ? snapshot.data().emails : [];
+    for (const email of emails) {
+      transaction.delete(db.collection("contactEmailIndex").doc(emailKey(email.address)));
+    }
+    transaction.delete(contactRef);
+  });
+  return {deleted: true};
+});
+
+exports.contactsImport = onCall({...callableOptions, timeoutSeconds: 540}, async (request) => {
+  const rows = request.data?.contacts;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new HttpsError("invalid-argument", "Provide at least one contact.");
+  }
+  if (rows.length > 500) {
+    throw new HttpsError("invalid-argument", "Import at most 500 contacts at a time.");
+  }
+  let imported = 0;
+  const errors = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    try {
+      await saveContact(rows[index]);
+      imported += 1;
+    } catch (error) {
+      errors.push({row: index + 2, message: publicErrorMessage(error)});
+    }
+  }
+  return {imported, skipped: rows.length - imported, errors};
+});
+
+async function saveContact(input) {
+  const value = validateContact(input);
+  const companyId = value.companyId || stableId("company", value.companyName.toLowerCase());
+  const companyRef = db.collection("companies").doc(companyId);
+  const contactRef = value.id ? db.collection("contacts").doc(value.id) : db.collection("contacts").doc();
+  const newEmailKeys = new Set(value.emails.map((email) => emailKey(email.address)));
+
+  await db.runTransaction(async (transaction) => {
+    const [existingContact, existingCompany, ...emailOwners] = await Promise.all([
+      transaction.get(contactRef),
+      transaction.get(companyRef),
+      ...[...newEmailKeys].map((key) => transaction.get(db.collection("contactEmailIndex").doc(key))),
+    ]);
+    for (const owner of emailOwners) {
+      if (owner.exists && owner.data().contactId !== contactRef.id) {
+        throw new HttpsError("already-exists", `Email ${owner.data().email} already belongs to another contact.`);
+      }
+    }
+
+    const oldEmails = existingContact.exists && Array.isArray(existingContact.data().emails) ? existingContact.data().emails : [];
+    for (const email of oldEmails) {
+      const key = emailKey(email.address);
+      if (!newEmailKeys.has(key)) transaction.delete(db.collection("contactEmailIndex").doc(key));
+    }
+
+    const now = FieldValue.serverTimestamp();
+    transaction.set(companyRef, {
+      name: value.companyName,
+      normalizedName: value.companyName.toLowerCase(),
+      domain: value.companyDomain || domainFromEmail(value.emails.find((email) => email.id === value.primaryEmailId).address),
+      createdAt: existingCompany.exists ? existingCompany.data().createdAt : now,
+      updatedAt: now,
+    }, {merge: true});
+    transaction.set(contactRef, {
+      companyId,
+      firstName: value.firstName,
+      lastName: value.lastName,
+      normalizedFullName: `${value.firstName} ${value.lastName}`.trim().toLowerCase(),
+      emails: value.emails,
+      primaryEmailId: value.primaryEmailId,
+      role: value.role,
+      linkedinUrl: value.linkedinUrl,
+      source: value.source,
+      segments: value.segments,
+      canReceiveCampaignEmails: value.canReceiveCampaignEmails,
+      createdAt: existingContact.exists ? existingContact.data().createdAt : now,
+      updatedAt: now,
+    });
+    for (const email of value.emails) {
+      transaction.set(db.collection("contactEmailIndex").doc(emailKey(email.address)), {
+        contactId: contactRef.id,
+        email: email.address,
+        updatedAt: now,
+      });
+    }
+  });
+  return {id: contactRef.id, companyId};
+}
+
+function validateContact(input) {
+  if (!input || typeof input !== "object") throw new HttpsError("invalid-argument", "Contact is required.");
+  const firstName = requiredString(input.firstName, "firstName");
+  const lastName = stringValue(input.lastName);
+  const companyName = requiredString(input.companyName, "companyName");
+  if (!Array.isArray(input.emails) || input.emails.length === 0) throw new HttpsError("invalid-argument", "At least one email is required.");
+  const emails = input.emails.map((email) => {
+    const address = normalizeEmail(requiredString(email?.address, "email.address"));
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) throw new HttpsError("invalid-argument", `Invalid email: ${address}`);
+    return {id: requiredString(email.id, "email.id"), address, label: stringValue(email.label)};
+  });
+  if (new Set(emails.map((email) => email.address)).size !== emails.length) throw new HttpsError("invalid-argument", "The same email cannot be added twice.");
+  const primaryEmailId = requiredString(input.primaryEmailId, "primaryEmailId");
+  if (!emails.some((email) => email.id === primaryEmailId)) throw new HttpsError("invalid-argument", "Primary email must belong to the contact.");
+  const segments = Array.isArray(input.segments) ? [...new Set(input.segments.map(stringValue).filter(Boolean))] : [];
+  return {
+    id: stringValue(input.id),
+    companyId: stringValue(input.companyId),
+    companyName,
+    companyDomain: stringValue(input.companyDomain),
+    firstName,
+    lastName,
+    emails,
+    primaryEmailId,
+    role: stringValue(input.role),
+    linkedinUrl: stringValue(input.linkedinUrl),
+    source: stringValue(input.source),
+    segments,
+    canReceiveCampaignEmails: input.canReceiveCampaignEmails === true,
+  };
+}
+
+function requiredString(value, field) {
+  const result = stringValue(value);
+  if (!result) throw new HttpsError("invalid-argument", `${field} is required.`);
+  return result;
+}
+function stringValue(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function normalizeEmail(value) {
+  return value.trim().toLowerCase();
+}
+function emailKey(email) {
+  return crypto.createHash("sha256").update(normalizeEmail(email)).digest("hex");
+}
+function stableId(prefix, value) {
+  return `${prefix}_${crypto.createHash("sha256").update(value).digest("hex").slice(0, 24)}`;
+}
+function domainFromEmail(email) {
+  return normalizeEmail(email).split("@")[1] || "";
+}
+function serializeDocument(document) {
+  return {id: document.id, ...serializeValue(document.data())};
+}
+function serializeValue(value) {
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  if (Array.isArray(value)) return value.map(serializeValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serializeValue(item)]));
+  }
+  return value;
+}
+function publicErrorMessage(error) {
+  return error instanceof HttpsError ? error.message : "Unexpected server error.";
+}

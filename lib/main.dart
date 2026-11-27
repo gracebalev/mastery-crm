@@ -1,12 +1,12 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'app/app.dart';
-import 'core/storage/key_value_store.dart';
-import 'features/contacts/data/local_contact_repository.dart';
+import 'features/contacts/data/firestore_contact_repository.dart';
+import 'firebase_options.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(
-    MasteryEmailApp(repository: LocalContactRepository(createKeyValueStore())),
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.web);
+  runApp(MasteryEmailApp(repository: FirestoreContactRepository()));
 }

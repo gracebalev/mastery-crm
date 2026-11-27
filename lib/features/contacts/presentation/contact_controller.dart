@@ -26,18 +26,31 @@ class ContactController extends ChangeNotifier {
 
   List<Company> companies = [];
   List<Contact> contacts = [];
+  bool isLoading = true;
+  String? loadError;
   String globalSearch = '';
   final Map<String, String> columnFilters = {};
   bool filtersVisible = false;
 
-  void reload() {
-    companies = [..._repository.getCompanies()]
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    contacts = [..._repository.getContacts()]
-      ..sort(
-        (a, b) => a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
-      );
+  Future<void> reload() async {
+    isLoading = true;
+    loadError = null;
     notifyListeners();
+    try {
+      final directory = await _repository.load();
+      companies = [...directory.companies]
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      contacts = [...directory.contacts]
+        ..sort(
+          (a, b) =>
+              a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
+        );
+    } on Object catch (error) {
+      loadError = _errorMessage(error);
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
   }
 
   Set<String> get knownSegments =>
@@ -112,7 +125,10 @@ class ContactController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Contact saveContact(ContactFormValue value, {Contact? existing}) {
+  Future<Contact> saveContact(
+    ContactFormValue value, {
+    Contact? existing,
+  }) async {
     final now = DateTime.now().toUtc();
     var company = value.companyId == null
         ? null
@@ -124,24 +140,10 @@ class ContactController extends ChangeNotifier {
               value.companyName.trim().toLowerCase(),
         )
         .firstOrNull;
-    if (company == null) {
-      company = Company(
-        id: _id('company'),
-        name: value.companyName.trim(),
-        domain: _domainFromEmail(
-          value.emails
-              .firstWhere((item) => item.id == value.primaryEmailId)
-              .address,
-        ),
-        createdAt: now,
-        updatedAt: now,
-      );
-      _repository.saveCompany(company);
-    }
     final names = splitFullName(value.fullName);
     final contact = Contact(
-      id: existing?.id ?? _id('contact'),
-      companyId: company.id,
+      id: existing?.id ?? '',
+      companyId: company?.id ?? '',
       firstName: names.firstName,
       lastName: names.lastName,
       emails: value.emails
@@ -166,17 +168,27 @@ class ContactController extends ChangeNotifier {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     );
-    _repository.saveContact(contact);
-    reload();
-    return contact;
+    try {
+      final saved = await _repository.saveContact(
+        ContactWrite(contact: contact, companyName: value.companyName.trim()),
+      );
+      await reload();
+      return contacts.firstWhere((item) => item.id == saved.id);
+    } on Object catch (error) {
+      throw StateError(_errorMessage(error));
+    }
   }
 
-  void deleteContact(Contact contact) {
-    _repository.deleteContact(contact.id);
-    reload();
+  Future<void> deleteContact(Contact contact) async {
+    try {
+      await _repository.deleteContact(contact.id);
+      await reload();
+    } on Object catch (error) {
+      throw StateError(_errorMessage(error));
+    }
   }
 
-  ImportResult importCsv(String source) {
+  Future<ImportResult> importCsv(String source) async {
     final rows = _csv.decode(source);
     if (rows.isEmpty) {
       return const ImportResult(
@@ -201,9 +213,9 @@ class ContactController extends ChangeNotifier {
       );
     }
 
-    var imported = 0;
     var skipped = 0;
     final errors = <String>[];
+    final writes = <ContactWrite>[];
     for (var rowIndex = 1; rowIndex < rows.length; rowIndex++) {
       final row = rows[rowIndex];
       String cell(String name) {
@@ -230,33 +242,51 @@ class ContactController extends ChangeNotifier {
         continue;
       }
       final emailId = _id('email');
-      try {
-        saveContact(
-          ContactFormValue(
-            companyName: company,
-            fullName: fullName,
-            emails: [
-              ContactEmailValue(id: emailId, address: email, label: 'Work'),
-            ],
+      final names = splitFullName(fullName);
+      final now = DateTime.now().toUtc();
+      writes.add(
+        ContactWrite(
+          companyName: company,
+          contact: Contact(
+            id: '',
+            companyId: '',
+            firstName: names.firstName,
+            lastName: names.lastName,
+            emails: [ContactEmail(id: emailId, address: email, label: 'Work')],
             primaryEmailId: emailId,
-            role: cell('Role'),
-            source: cell('Event / Source'),
-            linkedinUrl: cell('LinkedIn URL'),
+            role: _blankToNull(cell('Role')),
+            source: _blankToNull(cell('Event / Source')),
+            linkedinUrl: _blankToNull(cell('LinkedIn URL')),
             segments: cell('Segments')
                 .split(RegExp(r'[,;]'))
                 .map((item) => item.trim())
                 .where((item) => item.isNotEmpty)
+                .toSet()
                 .toList(),
             canReceiveCampaignEmails: _isYes(cell('Include in email outreach')),
+            createdAt: now,
+            updatedAt: now,
           ),
-        );
-        imported++;
-      } on StateError catch (error) {
-        skipped++;
-        errors.add('Row ${rowIndex + 1}: ${error.message}');
-      }
+        ),
+      );
     }
-    return ImportResult(imported: imported, skipped: skipped, errors: errors);
+    if (writes.isEmpty) {
+      return ImportResult(imported: 0, skipped: skipped, errors: errors);
+    }
+    try {
+      final result = await _repository.importContacts(writes);
+      await reload();
+      errors.addAll(
+        result.errors.map((error) => 'Row ${error.row}: ${error.message}'),
+      );
+      return ImportResult(
+        imported: result.imported,
+        skipped: skipped + result.skipped,
+        errors: errors,
+      );
+    } on Object catch (error) {
+      throw StateError(_errorMessage(error));
+    }
   }
 
   String exportCsv() {
@@ -283,13 +313,16 @@ class ContactController extends ChangeNotifier {
       '${prefix}_${DateTime.now().microsecondsSinceEpoch}_${_sequence++}';
   String? _blankToNull(String? value) =>
       value == null || value.trim().isEmpty ? null : value.trim();
-  String? _domainFromEmail(String email) {
-    final parts = normalizeEmail(email).split('@');
-    return parts.length == 2 ? parts.last : null;
-  }
-
   bool _isYes(String value) =>
       {'yes', 'true', '1', 'y'}.contains(value.trim().toLowerCase());
+
+  String _errorMessage(Object error) {
+    final message = error.toString();
+    return message
+        .replaceFirst('StateError: ', '')
+        .replaceFirst('Exception: ', '')
+        .replaceFirst(RegExp(r'^\[cloud_functions/[^]]+\]\s*'), '');
+  }
 }
 
 class CompanyContactGroup {

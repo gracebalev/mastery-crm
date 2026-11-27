@@ -49,6 +49,7 @@ class _ContactDialogState extends State<_ContactDialog> {
   String? _companyId;
   late String _primaryEmailId;
   bool _canReceiveCampaignEmails = false;
+  bool _saving = false;
   String? _error;
   var _emailSequence = 0;
 
@@ -310,14 +311,20 @@ class _ContactDialogState extends State<_ContactDialog> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   OutlinedButton(
-                    onPressed: () => Navigator.pop(context, false),
+                    onPressed: _saving
+                        ? null
+                        : () => Navigator.pop(context, false),
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 10),
                   ElevatedButton(
-                    onPressed: _save,
+                    onPressed: _saving ? null : _save,
                     child: Text(
-                      widget.contact == null ? 'Add contact' : 'Save changes',
+                      _saving
+                          ? 'Saving...'
+                          : widget.contact == null
+                          ? 'Add contact'
+                          : 'Save changes',
                     ),
                   ),
                 ],
@@ -472,10 +479,14 @@ class _ContactDialogState extends State<_ContactDialog> {
     });
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     try {
-      widget.controller.saveContact(
+      await widget.controller.saveContact(
         ContactFormValue(
           companyId: _companyId,
           companyName: _company.text,
@@ -498,9 +509,12 @@ class _ContactDialogState extends State<_ContactDialog> {
         ),
         existing: widget.contact,
       );
+      if (!mounted) return;
       Navigator.pop(context, true);
     } on StateError catch (error) {
-      setState(() => _error = error.message);
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 }

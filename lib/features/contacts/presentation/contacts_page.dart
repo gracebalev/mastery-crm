@@ -117,7 +117,11 @@ class _ContactsPageState extends State<ContactsPage> {
         ),
         const SizedBox(height: 14),
         Expanded(
-          child: _controller.visibleGroups.isEmpty
+          child: _controller.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _controller.loadError != null
+              ? _loadError()
+              : _controller.visibleGroups.isEmpty
               ? _emptyState()
               : ListView.separated(
                   itemCount: _controller.visibleGroups.length,
@@ -277,10 +281,43 @@ class _ContactsPageState extends State<ContactsPage> {
     ),
   );
 
+  Widget _loadError() => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.cloud_off_outlined, size: 48, color: mutedInk),
+        const SizedBox(height: 12),
+        Text(
+          'Could not load contacts',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _controller.loadError ?? '',
+          style: const TextStyle(color: mutedInk),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+        OutlinedButton(
+          onPressed: _controller.reload,
+          child: const Text('Try again'),
+        ),
+      ],
+    ),
+  );
+
   Future<void> _importCsv() async {
     final source = await pickCsvFile();
     if (!mounted || source == null) return;
-    final result = _controller.importCsv(source);
+    ImportResult result;
+    try {
+      result = await _controller.importCsv(source);
+    } on StateError catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+      return;
+    }
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -346,7 +383,14 @@ class _ContactsPageState extends State<ContactsPage> {
         ],
       ),
     );
-    if (confirmed == true) _controller.deleteContact(contact);
+    if (confirmed != true) return;
+    try {
+      await _controller.deleteContact(contact);
+    } on StateError catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 }
 

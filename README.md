@@ -12,7 +12,8 @@ The first functional release provides:
 - reusable free-form segment labels;
 - per-column filtering after three characters;
 - CSV import and export with user-facing headers;
-- browser-local persistence for the prototype.
+- shared Firebase Firestore persistence across browsers;
+- transactional email uniqueness and company preservation after contact deletion.
 
 Run locally with `flutter run -d chrome`. Validate changes with:
 
@@ -22,4 +23,10 @@ flutter test
 flutter build web
 ```
 
-Browser-local data is intended for prototype testing. A shared backend is required before Olga and Grace can work with the same contact directory from different browsers.
+The deployed prototype uses the Firebase project `mastery-crm-515920` and the
+Firestore collections `companies`, `contacts`, and `contactEmailIndex`.
+
+Cloud Functions CRUD handlers are included under `functions/`. The current
+Spark project cannot deploy them until billing is attached, so the web runtime
+uses the Firestore repository directly. Firestore authentication must be added
+before the prototype is exposed beyond the internal testing group.
