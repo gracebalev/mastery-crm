@@ -3,9 +3,11 @@ import 'package:flutter/foundation.dart';
 import '../../../core/utils/csv_codec.dart';
 import '../domain/contact_repository.dart';
 import '../domain/entities.dart';
+import '../../events/domain/event.dart';
+import '../../events/domain/event_repository.dart';
 
 class ContactController extends ChangeNotifier {
-  ContactController(this._repository) {
+  ContactController(this._repository, {this.eventRepository}) {
     reload();
   }
 
@@ -21,11 +23,13 @@ class ContactController extends ChangeNotifier {
   ];
 
   final ContactRepository _repository;
+  final EventRepository? eventRepository;
   final _csv = const SimpleCsvCodec();
   var _sequence = 0;
 
   List<Company> companies = [];
   List<Contact> contacts = [];
+  List<MasteryEvent> events = [];
   bool isLoading = true;
   String? loadError;
   String globalSearch = '';
@@ -38,7 +42,11 @@ class ContactController extends ChangeNotifier {
     loadError = null;
     notifyListeners();
     try {
-      final directory = await _repository.load();
+      final results = await Future.wait<Object>([
+        _repository.load(),
+        if (eventRepository != null) eventRepository!.loadEvents(),
+      ]);
+      final directory = results.first as ContactDirectory;
       companies = [...directory.companies]
         ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       contacts = [...directory.contacts]
@@ -46,6 +54,9 @@ class ContactController extends ChangeNotifier {
           (a, b) =>
               a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
         );
+      events = results.length > 1
+          ? [...results[1] as List<MasteryEvent>]
+          : const [];
     } on Object catch (error) {
       loadError = _errorMessage(error);
     } finally {
@@ -79,7 +90,10 @@ class ContactController extends ChangeNotifier {
                       '${contact.fullName} $primaryEmail',
                     ) &&
                     _matchesFilter('Role', contact.role ?? '') &&
-                    _matchesFilter('Event / Source', contact.source ?? '') &&
+                    _matchesFilter(
+                      'Event / Source',
+                      '${eventName(contact.sourceEventId)} ${contact.sourceNote ?? ''}',
+                    ) &&
                     _matchesFilter('LinkedIn', contact.linkedinUrl ?? '') &&
                     _matchesFilter('Segment', contact.segments.join(' '));
               })
@@ -190,7 +204,8 @@ class ContactController extends ChangeNotifier {
       primaryEmailId: value.primaryEmailId,
       role: _blankToNull(value.role),
       linkedinUrl: _blankToNull(value.linkedinUrl),
-      source: _blankToNull(value.source),
+      sourceEventId: value.sourceEventId,
+      sourceNote: _blankToNull(value.sourceNote),
       segments: value.segments
           .map((item) => item.trim())
           .where((item) => item.isNotEmpty)
@@ -299,9 +314,14 @@ class ContactController extends ChangeNotifier {
         emails: emailState.emails,
         primaryEmailId: emailState.primaryEmailId,
         role: hasColumn('Role') ? _blankToNull(cell('Role')) : current?.role,
-        source: hasColumn('Event / Source')
+        sourceEventId: hasColumn('Event / Source')
+            ? _eventIdByName(cell('Event / Source')) ?? current?.sourceEventId
+            : current?.sourceEventId,
+        sourceNote:
+            hasColumn('Event / Source') &&
+                _eventIdByName(cell('Event / Source')) == null
             ? _blankToNull(cell('Event / Source'))
-            : current?.source,
+            : current?.sourceNote,
         linkedinUrl: hasColumn('LinkedIn URL')
             ? _blankToNull(cell('LinkedIn URL'))
             : current?.linkedinUrl,
@@ -363,7 +383,9 @@ class ContactController extends ChangeNotifier {
           contact.fullName,
           contact.primaryEmail?.address ?? '',
           contact.role ?? '',
-          contact.source ?? '',
+          eventName(contact.sourceEventId).isNotEmpty
+              ? eventName(contact.sourceEventId)
+              : contact.sourceNote ?? '',
           contact.linkedinUrl ?? '',
           contact.segments.join(', '),
           contact.hasPrimaryEmail && contact.canReceiveCampaignEmails
@@ -381,6 +403,32 @@ class ContactController extends ChangeNotifier {
       value == null || value.trim().isEmpty ? null : value.trim();
   bool _isYes(String value) =>
       {'yes', 'true', '1', 'y'}.contains(value.trim().toLowerCase());
+
+  String eventName(String? eventId) =>
+      events.where((event) => event.id == eventId).firstOrNull?.name ?? '';
+
+  String? _eventIdByName(String value) {
+    final normalized = _normalizeIdentity(value);
+    if (normalized.isEmpty) return null;
+    return events
+        .where((event) => _normalizeIdentity(event.name) == normalized)
+        .firstOrNull
+        ?.id;
+  }
+
+  Future<void> assignEvent(Contact contact, String eventId) async {
+    final company = companies
+        .where((item) => item.id == contact.companyId)
+        .firstOrNull;
+    if (company == null) throw StateError('Contact company was not found.');
+    await _repository.saveContact(
+      ContactWrite(
+        contact: contact.copyWith(sourceEventId: eventId),
+        companyName: company.name,
+      ),
+    );
+    await reload();
+  }
 
   String _contactIdentityKey(Contact contact) {
     final companyName = companies
@@ -436,7 +484,8 @@ class ContactController extends ChangeNotifier {
         optional(left.lastName) == optional(right.lastName) &&
         optional(left.role) == optional(right.role) &&
         optional(left.linkedinUrl) == optional(right.linkedinUrl) &&
-        optional(left.source) == optional(right.source) &&
+        optional(left.sourceEventId) == optional(right.sourceEventId) &&
+        optional(left.sourceNote) == optional(right.sourceNote) &&
         listEquals(emails(left), emails(right)) &&
         listEquals(segments(left), segments(right)) &&
         normalizeEmail(left.primaryEmail?.address ?? '') ==
@@ -476,7 +525,8 @@ class ContactFormValue {
     this.primaryEmailId,
     this.role,
     this.linkedinUrl,
-    this.source,
+    this.sourceEventId,
+    this.sourceNote,
     this.segments = const [],
     this.canReceiveCampaignEmails = false,
   });
@@ -487,7 +537,8 @@ class ContactFormValue {
   final String? primaryEmailId;
   final String? role;
   final String? linkedinUrl;
-  final String? source;
+  final String? sourceEventId;
+  final String? sourceNote;
   final List<String> segments;
   final bool canReceiveCampaignEmails;
 }

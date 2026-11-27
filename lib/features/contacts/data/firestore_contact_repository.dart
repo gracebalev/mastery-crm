@@ -135,7 +135,8 @@ class FirestoreContactRepository implements ContactRepository {
         'primaryEmailId': contact.primaryEmailId,
         'role': contact.role ?? '',
         'linkedinUrl': contact.linkedinUrl ?? '',
-        'source': contact.source ?? '',
+        'sourceEventId': contact.sourceEventId,
+        'sourceNote': contact.sourceNote ?? '',
         'segments': contact.segments,
         'canReceiveCampaignEmails':
             primary != null && contact.canReceiveCampaignEmails,
@@ -267,7 +268,8 @@ class FirestoreContactRepository implements ContactRepository {
       primaryEmailId: primaryEmailId,
       role: _optionalString(data['role']),
       linkedinUrl: _optionalString(data['linkedinUrl']),
-      source: _optionalString(data['source']),
+      sourceEventId: _optionalString(data['sourceEventId']),
+      sourceNote: _optionalString(data['sourceNote'] ?? data['source']),
       segments: (data['segments'] as List? ?? const [])
           .whereType<String>()
           .toList(),

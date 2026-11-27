@@ -6,12 +6,18 @@ import '../../../core/utils/csv_file_io.dart';
 import '../../../core/utils/external_link.dart';
 import '../domain/contact_repository.dart';
 import '../domain/entities.dart';
+import '../../events/domain/event_repository.dart';
 import 'contact_controller.dart';
 import 'contact_dialog.dart';
 
 class ContactsPage extends StatefulWidget {
-  const ContactsPage({super.key, required this.repository});
+  const ContactsPage({
+    super.key,
+    required this.repository,
+    required this.eventRepository,
+  });
   final ContactRepository repository;
+  final EventRepository eventRepository;
 
   @override
   State<ContactsPage> createState() => _ContactsPageState();
@@ -25,7 +31,10 @@ class _ContactsPageState extends State<ContactsPage> {
   @override
   void initState() {
     super.initState();
-    _controller = ContactController(widget.repository);
+    _controller = ContactController(
+      widget.repository,
+      eventRepository: widget.eventRepository,
+    );
   }
 
   @override
@@ -37,27 +46,18 @@ class _ContactsPageState extends State<ContactsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Row(
-        children: [
-          const _Sidebar(),
-          Expanded(
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, _) => LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: constraints.maxWidth < 1080
-                        ? 1080
-                        : constraints.maxWidth,
-                    height: constraints.maxHeight,
-                    child: _content(),
-                  ),
-                ),
-              ),
+      body: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) => LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: constraints.maxWidth < 1080 ? 1080 : constraints.maxWidth,
+              height: constraints.maxHeight,
+              child: _content(),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -136,6 +136,10 @@ class _ContactsPageState extends State<ContactsPage> {
                     return _CompanyCard(
                       key: ValueKey(companyId),
                       group: group,
+                      eventNames: {
+                        for (final event in _controller.events)
+                          event.id: event.name,
+                      },
                       expanded: !_collapsedCompanyIds.contains(companyId),
                       onToggle: () => setState(() {
                         if (!_collapsedCompanyIds.add(companyId)) {
@@ -522,6 +526,7 @@ class _CompanyCard extends StatelessWidget {
   const _CompanyCard({
     super.key,
     required this.group,
+    required this.eventNames,
     required this.expanded,
     required this.onToggle,
     required this.onAdd,
@@ -529,6 +534,7 @@ class _CompanyCard extends StatelessWidget {
     required this.onDelete,
   });
   final CompanyContactGroup group;
+  final Map<String, String> eventNames;
   final bool expanded;
   final VoidCallback onToggle;
   final ValueChanged<Company> onAdd;
@@ -620,6 +626,8 @@ class _CompanyCard extends StatelessWidget {
               ...contacts.map(
                 (contact) => _ContactRow(
                   contact: contact,
+                  eventSource:
+                      eventNames[contact.sourceEventId] ?? contact.sourceNote,
                   onEdit: onEdit,
                   onDelete: onDelete,
                 ),
@@ -658,10 +666,12 @@ class _ContactHeader extends StatelessWidget {
 class _ContactRow extends StatelessWidget {
   const _ContactRow({
     required this.contact,
+    this.eventSource,
     required this.onEdit,
     required this.onDelete,
   });
   final Contact contact;
+  final String? eventSource;
   final ValueChanged<Contact> onEdit;
   final ValueChanged<Contact> onDelete;
 
@@ -724,7 +734,7 @@ class _ContactRow extends StatelessWidget {
         ),
         Expanded(
           flex: 3,
-          child: Text(contact.source ?? '—', overflow: TextOverflow.ellipsis),
+          child: Text(eventSource ?? '—', overflow: TextOverflow.ellipsis),
         ),
         Expanded(
           flex: 3,
@@ -841,8 +851,8 @@ class _CompanyAvatar extends StatelessWidget {
   );
 }
 
-class _Sidebar extends StatelessWidget {
-  const _Sidebar();
+class LegacySidebar extends StatelessWidget {
+  const LegacySidebar({super.key});
   @override
   Widget build(BuildContext context) => Container(
     width: 232,

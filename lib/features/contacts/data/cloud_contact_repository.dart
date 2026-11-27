@@ -83,7 +83,8 @@ class CloudContactRepository implements ContactRepository {
       'primaryEmailId': contact.primaryEmailId ?? '',
       'role': contact.role ?? '',
       'linkedinUrl': contact.linkedinUrl ?? '',
-      'source': contact.source ?? '',
+      'sourceEventId': contact.sourceEventId ?? '',
+      'sourceNote': contact.sourceNote ?? '',
       'segments': contact.segments,
       'canReceiveCampaignEmails': contact.canReceiveCampaignEmails,
     };
@@ -121,7 +122,8 @@ class CloudContactRepository implements ContactRepository {
       primaryEmailId: primaryEmailId,
       role: _optionalString(map['role']),
       linkedinUrl: _optionalString(map['linkedinUrl']),
-      source: _optionalString(map['source']),
+      sourceEventId: _optionalString(map['sourceEventId']),
+      sourceNote: _optionalString(map['sourceNote'] ?? map['source']),
       segments: (map['segments'] as List<Object?>? ?? const [])
           .whereType<String>()
           .toList(),

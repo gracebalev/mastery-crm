@@ -9,6 +9,7 @@ Future<bool> showContactDialog({
   required ContactController controller,
   Contact? contact,
   Company? initialCompany,
+  String? initialEventId,
 }) async {
   final result = await showDialog<bool>(
     context: context,
@@ -17,6 +18,7 @@ Future<bool> showContactDialog({
       controller: controller,
       contact: contact,
       initialCompany: initialCompany,
+      initialEventId: initialEventId,
     ),
   );
   return result ?? false;
@@ -27,10 +29,12 @@ class _ContactDialog extends StatefulWidget {
     required this.controller,
     this.contact,
     this.initialCompany,
+    this.initialEventId,
   });
   final ContactController controller;
   final Contact? contact;
   final Company? initialCompany;
+  final String? initialEventId;
 
   @override
   State<_ContactDialog> createState() => _ContactDialogState();
@@ -41,13 +45,14 @@ class _ContactDialogState extends State<_ContactDialog> {
   late final TextEditingController _name;
   late final TextEditingController _company;
   late final TextEditingController _role;
-  late final TextEditingController _source;
+  late final TextEditingController _sourceNote;
   late final TextEditingController _linkedin;
   final _segment = TextEditingController();
   final List<_EmailEditor> _emails = [];
   final List<String> _segments = [];
   String? _companyId;
   String? _primaryEmailId;
+  String? _sourceEventId;
   bool _canReceiveCampaignEmails = false;
   bool _saving = false;
   String? _error;
@@ -66,7 +71,8 @@ class _ContactDialogState extends State<_ContactDialog> {
     _company = TextEditingController(text: company?.name ?? '');
     _companyId = company?.id;
     _role = TextEditingController(text: contact?.role ?? '');
-    _source = TextEditingController(text: contact?.source ?? '');
+    _sourceNote = TextEditingController(text: contact?.sourceNote ?? '');
+    _sourceEventId = contact?.sourceEventId ?? widget.initialEventId;
     _linkedin = TextEditingController(text: contact?.linkedinUrl ?? '');
     _segments.addAll(contact?.segments ?? const []);
     _canReceiveCampaignEmails = contact?.canReceiveCampaignEmails ?? false;
@@ -99,7 +105,7 @@ class _ContactDialogState extends State<_ContactDialog> {
     _name.dispose();
     _company.dispose();
     _role.dispose();
-    _source.dispose();
+    _sourceNote.dispose();
     _linkedin.dispose();
     _segment.dispose();
     for (final email in _emails) {
@@ -208,13 +214,48 @@ class _ContactDialogState extends State<_ContactDialog> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: _labeledField(
-                            'EVENT / SOURCE',
-                            _source,
-                            'e.g. Warsaw Growth Summit',
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _fieldLabel('EVENT / SOURCE'),
+                              DropdownButtonFormField<String>(
+                                initialValue: _sourceEventId,
+                                isExpanded: true,
+                                hint: const Text('Select an existing event'),
+                                items: [
+                                  const DropdownMenuItem(
+                                    value: '',
+                                    child: Text('No event'),
+                                  ),
+                                  ...widget.controller.events.map(
+                                    (event) => DropdownMenuItem(
+                                      value: event.id,
+                                      child: Text(
+                                        event.name,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (value) => setState(
+                                  () => _sourceEventId =
+                                      value == null || value.isEmpty
+                                      ? null
+                                      : value,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 18),
+                    _fieldLabel('SOURCE NOTE'),
+                    TextFormField(
+                      controller: _sourceNote,
+                      decoration: const InputDecoration(
+                        hintText: 'e.g. Met after the leadership panel',
+                      ),
                     ),
                     const SizedBox(height: 18),
                     _fieldLabel('LINKEDIN URL'),
@@ -530,7 +571,8 @@ class _ContactDialogState extends State<_ContactDialog> {
           primaryEmailId: primaryEmailId,
           role: _role.text,
           linkedinUrl: _linkedin.text,
-          source: _source.text,
+          sourceEventId: _sourceEventId,
+          sourceNote: _sourceNote.text,
           segments: _segments,
           canReceiveCampaignEmails:
               primaryEmailId != null && _canReceiveCampaignEmails,

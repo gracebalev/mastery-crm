@@ -21,6 +21,10 @@ service cloud.firestore {
       allow read, create, update, delete: if signedIn();
     }
 
+    match /events/{eventId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
     match /contactEmailIndex/{emailKey} {
       allow read, create, update, delete: if signedIn();
     }

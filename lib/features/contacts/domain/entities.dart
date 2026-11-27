@@ -30,12 +30,14 @@ class Contact {
     this.primaryEmailId,
     this.role,
     this.linkedinUrl,
-    this.source,
+    this.sourceEventId,
+    String? source,
+    String? sourceNote,
     this.segments = const [],
     this.canReceiveCampaignEmails = false,
     required this.createdAt,
     required this.updatedAt,
-  });
+  }) : sourceNote = sourceNote ?? source;
   final String id;
   final String companyId;
   final String firstName;
@@ -44,7 +46,9 @@ class Contact {
   final String? primaryEmailId;
   final String? role;
   final String? linkedinUrl;
-  final String? source;
+  final String? sourceEventId;
+  final String? sourceNote;
+  String? get source => sourceNote;
   final List<String> segments;
   final bool canReceiveCampaignEmails;
   final DateTime createdAt;
@@ -59,6 +63,23 @@ class Contact {
   }
 
   bool get hasPrimaryEmail => primaryEmail != null;
+
+  Contact copyWith({String? sourceEventId}) => Contact(
+    id: id,
+    companyId: companyId,
+    firstName: firstName,
+    lastName: lastName,
+    emails: emails,
+    primaryEmailId: primaryEmailId,
+    role: role,
+    linkedinUrl: linkedinUrl,
+    sourceEventId: sourceEventId ?? this.sourceEventId,
+    sourceNote: sourceNote,
+    segments: segments,
+    canReceiveCampaignEmails: canReceiveCampaignEmails,
+    createdAt: createdAt,
+    updatedAt: DateTime.now().toUtc(),
+  );
 }
 
 String normalizeEmail(String value) => value.trim().toLowerCase();
