@@ -187,37 +187,45 @@ class _EventsPageState extends State<EventsPage> {
         ),
       );
     }
-    return ListView.separated(
-      itemCount: events.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final event = events[index];
-        return _EventCard(
-          event: event,
-          contacts: _controller.contactsFor(event.id),
-          companyName: _controller.companyName,
-          expanded: _expanded.contains(event.id),
-          onToggle: () => setState(() {
-            if (!_expanded.add(event.id)) _expanded.remove(event.id);
-          }),
-          onEditEvent: () => showEventDialog(
-            context: context,
-            controller: _controller,
-            event: event,
+    return Column(
+      children: [
+        const _EventColumnHeaders(),
+        const SizedBox(height: 9),
+        Expanded(
+          child: ListView.separated(
+            itemCount: events.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final event = events[index];
+              return _EventCard(
+                event: event,
+                contacts: _controller.contactsFor(event.id),
+                companyName: _controller.companyName,
+                expanded: _expanded.contains(event.id),
+                onToggle: () => setState(() {
+                  if (!_expanded.add(event.id)) _expanded.remove(event.id);
+                }),
+                onEditEvent: () => showEventDialog(
+                  context: context,
+                  controller: _controller,
+                  event: event,
+                ),
+                onDeleteEvent: () => _confirmDelete(event),
+                onCreateContact: () => _createContact(event),
+                onLinkContact: () => _linkExisting(event),
+                onEditContact: (contact) async {
+                  final changed = await showContactDialog(
+                    context: context,
+                    controller: _contactController,
+                    contact: contact,
+                  );
+                  if (changed) await _controller.reload();
+                },
+              );
+            },
           ),
-          onDeleteEvent: () => _confirmDelete(event),
-          onCreateContact: () => _createContact(event),
-          onLinkContact: () => _linkExisting(event),
-          onEditContact: (contact) async {
-            final changed = await showContactDialog(
-              context: context,
-              controller: _contactController,
-              contact: contact,
-            );
-            if (changed) await _controller.reload();
-          },
-        );
-      },
+        ),
+      ],
     );
   }
 
@@ -313,6 +321,44 @@ class _EventsPageState extends State<EventsPage> {
       .join();
 }
 
+class _EventColumnHeaders extends StatelessWidget {
+  const _EventColumnHeaders();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.symmetric(horizontal: 18),
+    child: Row(
+      children: [
+        SizedBox(width: 86),
+        Expanded(flex: 3, child: _ColumnHeader('EVENT')),
+        Expanded(flex: 2, child: _ColumnHeader('DATES')),
+        Expanded(flex: 2, child: _ColumnHeader('DURATION')),
+        Expanded(flex: 2, child: _ColumnHeader('LOCATION')),
+        Expanded(flex: 2, child: _ColumnHeader('CONTACTS')),
+        SizedBox(width: 48, child: _ColumnHeader('ACTIONS')),
+      ],
+    ),
+  );
+}
+
+class _ColumnHeader extends StatelessWidget {
+  const _ColumnHeader(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    label,
+    overflow: TextOverflow.ellipsis,
+    style: const TextStyle(
+      color: mutedInk,
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.4,
+    ),
+  );
+}
+
 class _EventCard extends StatelessWidget {
   const _EventCard({
     required this.event,
@@ -391,6 +437,10 @@ class _EventCard extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: Text(_dateRange(event.startDate, event.endDate)),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(_duration(event.startDate, event.endDate)),
                 ),
                 Expanded(flex: 2, child: Text(event.location ?? '—')),
                 Expanded(
@@ -514,6 +564,16 @@ class _EventCard extends StatelessWidget {
 
   static String _date(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+
+  static String _duration(DateTime? startDate, DateTime? endDate) {
+    if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+      return '—';
+    }
+    final start = DateTime(startDate.year, startDate.month, startDate.day);
+    final end = DateTime(endDate.year, endDate.month, endDate.day);
+    final days = end.difference(start).inDays + 1;
+    return '$days ${days == 1 ? 'day' : 'days'}';
+  }
 
   static bool _sameDay(DateTime first, DateTime second) =>
       first.year == second.year &&
