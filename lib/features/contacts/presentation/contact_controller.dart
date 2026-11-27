@@ -31,6 +31,7 @@ class ContactController extends ChangeNotifier {
   String globalSearch = '';
   final Map<String, String> columnFilters = {};
   bool filtersVisible = false;
+  EmailFilter emailFilter = EmailFilter.all;
 
   Future<void> reload() async {
     isLoading = true;
@@ -63,17 +64,19 @@ class ContactController extends ChangeNotifier {
         .map((company) {
           final companyContacts = contacts
               .where((contact) => contact.companyId == company.id)
+              .where(_matchesEmailFilter)
               .where((contact) {
+                final primaryEmail = contact.primaryEmail?.address ?? '';
                 if (activeQuery.isNotEmpty &&
                     !_includes(company.name, activeQuery) &&
                     !_includes(contact.fullName, activeQuery) &&
-                    !_includes(contact.primaryEmail.address, activeQuery)) {
+                    !_includes(primaryEmail, activeQuery)) {
                   return false;
                 }
                 return _matchesFilter('Company', company.name) &&
                     _matchesFilter(
                       'Contact',
-                      '${contact.fullName} ${contact.primaryEmail.address}',
+                      '${contact.fullName} $primaryEmail',
                     ) &&
                     _matchesFilter('Role', contact.role ?? '') &&
                     _matchesFilter('Event / Source', contact.source ?? '') &&
@@ -89,7 +92,8 @@ class ContactController extends ChangeNotifier {
           if (companyContacts.isEmpty &&
               (contacts.any((contact) => contact.companyId == company.id) ||
                   activeQuery.isNotEmpty ||
-                  hasColumnFilters) &&
+                  hasColumnFilters ||
+                  emailFilter != EmailFilter.all) &&
               !companyMatches) {
             return null;
           }
@@ -110,6 +114,12 @@ class ContactController extends ChangeNotifier {
   bool _includes(String value, String query) =>
       value.toLowerCase().contains(query);
 
+  bool _matchesEmailFilter(Contact contact) => switch (emailFilter) {
+    EmailFilter.all => true,
+    EmailFilter.missing => !contact.hasPrimaryEmail,
+    EmailFilter.hasEmail => contact.hasPrimaryEmail,
+  };
+
   void setGlobalSearch(String value) {
     globalSearch = value;
     notifyListeners();
@@ -122,6 +132,11 @@ class ContactController extends ChangeNotifier {
 
   void toggleFilters() {
     filtersVisible = !filtersVisible;
+    notifyListeners();
+  }
+
+  void setEmailFilter(EmailFilter value) {
+    emailFilter = value;
     notifyListeners();
   }
 
@@ -147,6 +162,7 @@ class ContactController extends ChangeNotifier {
       firstName: names.firstName,
       lastName: names.lastName,
       emails: value.emails
+          .where((email) => email.address.trim().isNotEmpty)
           .map(
             (email) => ContactEmail(
               id: email.id,
@@ -164,7 +180,8 @@ class ContactController extends ChangeNotifier {
           .where((item) => item.isNotEmpty)
           .toSet()
           .toList(),
-      canReceiveCampaignEmails: value.canReceiveCampaignEmails,
+      canReceiveCampaignEmails:
+          value.primaryEmailId != null && value.canReceiveCampaignEmails,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     );
@@ -202,7 +219,7 @@ class ContactController extends ChangeNotifier {
       for (var i = 0; i < header.length; i++) header[i].toLowerCase(): i,
     };
     final missing = csvHeaders
-        .take(3)
+        .take(2)
         .where((name) => !indexes.containsKey(name.toLowerCase()))
         .toList();
     if (missing.isNotEmpty) {
@@ -226,22 +243,22 @@ class ContactController extends ChangeNotifier {
       final company = cell('Company');
       final fullName = cell('Full name');
       final email = normalizeEmail(cell('Primary email'));
-      if (company.isEmpty || fullName.isEmpty || email.isEmpty) {
+      if (company.isEmpty || fullName.isEmpty) {
         skipped++;
-        errors.add(
-          'Row ${rowIndex + 1}: Company, Full name and Primary email are required.',
-        );
+        errors.add('Row ${rowIndex + 1}: Company and Full name are required.');
         continue;
       }
-      if (contacts.any(
-        (contact) =>
-            contact.emails.any((item) => normalizeEmail(item.address) == email),
-      )) {
+      if (email.isNotEmpty &&
+          contacts.any(
+            (contact) => contact.emails.any(
+              (item) => normalizeEmail(item.address) == email,
+            ),
+          )) {
         skipped++;
         errors.add('Row ${rowIndex + 1}: $email already exists.');
         continue;
       }
-      final emailId = _id('email');
+      final emailId = email.isEmpty ? null : _id('email');
       final names = splitFullName(fullName);
       final now = DateTime.now().toUtc();
       writes.add(
@@ -252,7 +269,9 @@ class ContactController extends ChangeNotifier {
             companyId: '',
             firstName: names.firstName,
             lastName: names.lastName,
-            emails: [ContactEmail(id: emailId, address: email, label: 'Work')],
+            emails: emailId == null
+                ? const []
+                : [ContactEmail(id: emailId, address: email, label: 'Work')],
             primaryEmailId: emailId,
             role: _blankToNull(cell('Role')),
             source: _blankToNull(cell('Event / Source')),
@@ -263,7 +282,8 @@ class ContactController extends ChangeNotifier {
                 .where((item) => item.isNotEmpty)
                 .toSet()
                 .toList(),
-            canReceiveCampaignEmails: _isYes(cell('Include in email outreach')),
+            canReceiveCampaignEmails:
+                emailId != null && _isYes(cell('Include in email outreach')),
             createdAt: now,
             updatedAt: now,
           ),
@@ -297,12 +317,14 @@ class ContactController extends ChangeNotifier {
         rows.add([
           companyById[contact.companyId]?.name ?? '',
           contact.fullName,
-          contact.primaryEmail.address,
+          contact.primaryEmail?.address ?? '',
           contact.role ?? '',
           contact.source ?? '',
           contact.linkedinUrl ?? '',
           contact.segments.join(', '),
-          contact.canReceiveCampaignEmails ? 'Yes' : 'No',
+          contact.hasPrimaryEmail && contact.canReceiveCampaignEmails
+              ? 'Yes'
+              : 'No',
         ]);
       }
     }
@@ -331,13 +353,15 @@ class CompanyContactGroup {
   final List<Contact> contacts;
 }
 
+enum EmailFilter { all, missing, hasEmail }
+
 class ContactFormValue {
   const ContactFormValue({
     this.companyId,
     required this.companyName,
     required this.fullName,
     required this.emails,
-    required this.primaryEmailId,
+    this.primaryEmailId,
     this.role,
     this.linkedinUrl,
     this.source,
@@ -348,7 +372,7 @@ class ContactFormValue {
   final String companyName;
   final String fullName;
   final List<ContactEmailValue> emails;
-  final String primaryEmailId;
+  final String? primaryEmailId;
   final String? role;
   final String? linkedinUrl;
   final String? source;

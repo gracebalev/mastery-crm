@@ -27,7 +27,7 @@ class Contact {
     required this.firstName,
     required this.lastName,
     required this.emails,
-    required this.primaryEmailId,
+    this.primaryEmailId,
     this.role,
     this.linkedinUrl,
     this.source,
@@ -41,7 +41,7 @@ class Contact {
   final String firstName;
   final String lastName;
   final List<ContactEmail> emails;
-  final String primaryEmailId;
+  final String? primaryEmailId;
   final String? role;
   final String? linkedinUrl;
   final String? source;
@@ -51,8 +51,14 @@ class Contact {
   final DateTime updatedAt;
 
   String get fullName => '$firstName $lastName'.trim();
-  ContactEmail get primaryEmail =>
-      emails.singleWhere((email) => email.id == primaryEmailId);
+  ContactEmail? get primaryEmail {
+    for (final email in emails) {
+      if (email.id == primaryEmailId) return email;
+    }
+    return null;
+  }
+
+  bool get hasPrimaryEmail => primaryEmail != null;
 }
 
 String normalizeEmail(String value) => value.trim().toLowerCase();

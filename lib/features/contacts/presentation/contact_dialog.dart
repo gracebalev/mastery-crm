@@ -47,7 +47,7 @@ class _ContactDialogState extends State<_ContactDialog> {
   final List<_EmailEditor> _emails = [];
   final List<String> _segments = [];
   String? _companyId;
-  late String _primaryEmailId;
+  String? _primaryEmailId;
   bool _canReceiveCampaignEmails = false;
   bool _saving = false;
   String? _error;
@@ -178,9 +178,7 @@ class _ContactDialogState extends State<_ContactDialog> {
                     const SizedBox(height: 22),
                     Row(
                       children: [
-                        Expanded(
-                          child: _fieldLabel('EMAIL ADDRESSES', required: true),
-                        ),
+                        Expanded(child: _fieldLabel('EMAIL ADDRESSES')),
                         TextButton.icon(
                           onPressed: _addEmail,
                           icon: const Icon(Icons.add, size: 18),
@@ -188,6 +186,14 @@ class _ContactDialogState extends State<_ContactDialog> {
                         ),
                       ],
                     ),
+                    if (_emails.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 10),
+                        child: Text(
+                          'No email yet. You can add one later.',
+                          style: TextStyle(color: placeholderInk, fontSize: 12),
+                        ),
+                      ),
                     ..._emails.map(_emailRow),
                     const SizedBox(height: 14),
                     Row(
@@ -281,14 +287,19 @@ class _ContactDialogState extends State<_ContactDialog> {
                     ),
                     const SizedBox(height: 18),
                     CheckboxListTile(
-                      value: _canReceiveCampaignEmails,
-                      onChanged: (value) => setState(
-                        () => _canReceiveCampaignEmails = value ?? false,
-                      ),
+                      value: _hasEnteredEmail && _canReceiveCampaignEmails,
+                      onChanged: _hasEnteredEmail
+                          ? (value) => setState(
+                              () => _canReceiveCampaignEmails = value ?? false,
+                            )
+                          : null,
                       contentPadding: EdgeInsets.zero,
                       controlAffinity: ListTileControlAffinity.leading,
-                      title: const Text(
-                        'This contact can receive campaign emails',
+                      title: const Text('Include in email outreach'),
+                      subtitle: Text(
+                        _hasEnteredEmail
+                            ? 'Uses the selected primary email.'
+                            : 'Add an email before enabling outreach.',
                       ),
                     ),
                     if (_error != null) ...[
@@ -385,14 +396,15 @@ class _ContactDialogState extends State<_ContactDialog> {
           flex: 3,
           child: TextFormField(
             controller: email.address,
+            onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               labelText: email.id == _primaryEmailId
                   ? 'Primary email'
-                  : 'Email',
+                  : 'Email (optional)',
             ),
             validator: (value) {
               final text = normalizeEmail(value ?? '');
-              if (text.isEmpty) return 'Email is required.';
+              if (text.isEmpty) return null;
               return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(text)
                   ? null
                   : 'Enter a valid email.';
@@ -411,7 +423,7 @@ class _ContactDialogState extends State<_ContactDialog> {
         ),
         IconButton(
           tooltip: 'Delete email',
-          onPressed: _emails.length == 1 ? null : () => _removeEmail(email),
+          onPressed: () => _removeEmail(email),
           icon: const Icon(Icons.delete_outline),
         ),
       ],
@@ -459,12 +471,20 @@ class _ContactDialogState extends State<_ContactDialog> {
   String? _required(String? value) =>
       value == null || value.trim().isEmpty ? 'This field is required.' : null;
 
-  void _addEmail() => setState(() => _emails.add(_newEmail()));
+  bool get _hasEnteredEmail =>
+      _emails.any((email) => email.address.text.trim().isNotEmpty);
+
+  void _addEmail() => setState(() {
+    final email = _newEmail();
+    _emails.add(email);
+    _primaryEmailId ??= email.id;
+  });
   void _removeEmail(_EmailEditor email) => setState(() {
     final wasPrimary = email.id == _primaryEmailId;
     _emails.remove(email);
     email.dispose();
-    if (wasPrimary) _primaryEmailId = _emails.first.id;
+    if (wasPrimary) _primaryEmailId = _emails.firstOrNull?.id;
+    if (_emails.isEmpty) _canReceiveCampaignEmails = false;
   });
 
   void _addSegment(String value) {
@@ -481,6 +501,13 @@ class _ContactDialogState extends State<_ContactDialog> {
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    final enteredEmails = _emails
+        .where((email) => email.address.text.trim().isNotEmpty)
+        .toList();
+    final primaryEmailId =
+        enteredEmails.any((email) => email.id == _primaryEmailId)
+        ? _primaryEmailId
+        : enteredEmails.firstOrNull?.id;
     setState(() {
       _saving = true;
       _error = null;
@@ -491,7 +518,7 @@ class _ContactDialogState extends State<_ContactDialog> {
           companyId: _companyId,
           companyName: _company.text,
           fullName: _name.text,
-          emails: _emails
+          emails: enteredEmails
               .map(
                 (email) => ContactEmailValue(
                   id: email.id,
@@ -500,12 +527,13 @@ class _ContactDialogState extends State<_ContactDialog> {
                 ),
               )
               .toList(),
-          primaryEmailId: _primaryEmailId,
+          primaryEmailId: primaryEmailId,
           role: _role.text,
           linkedinUrl: _linkedin.text,
           source: _source.text,
           segments: _segments,
-          canReceiveCampaignEmails: _canReceiveCampaignEmails,
+          canReceiveCampaignEmails:
+              primaryEmailId != null && _canReceiveCampaignEmails,
         ),
         existing: widget.contact,
       );

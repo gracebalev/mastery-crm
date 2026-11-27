@@ -93,10 +93,11 @@ async function saveContact(input) {
     }
 
     const now = FieldValue.serverTimestamp();
+    const primaryEmail = value.emails.find((email) => email.id === value.primaryEmailId);
     transaction.set(companyRef, {
       name: value.companyName,
       normalizedName: value.companyName.toLowerCase(),
-      domain: value.companyDomain || domainFromEmail(value.emails.find((email) => email.id === value.primaryEmailId).address),
+      domain: value.companyDomain || (primaryEmail ? domainFromEmail(primaryEmail.address) : (existingCompany.data()?.domain || "")),
       createdAt: existingCompany.exists ? existingCompany.data().createdAt : now,
       updatedAt: now,
     }, {merge: true});
@@ -111,7 +112,7 @@ async function saveContact(input) {
       linkedinUrl: value.linkedinUrl,
       source: value.source,
       segments: value.segments,
-      canReceiveCampaignEmails: value.canReceiveCampaignEmails,
+      canReceiveCampaignEmails: Boolean(primaryEmail) && value.canReceiveCampaignEmails,
       createdAt: existingContact.exists ? existingContact.data().createdAt : now,
       updatedAt: now,
     });
@@ -131,15 +132,16 @@ function validateContact(input) {
   const firstName = requiredString(input.firstName, "firstName");
   const lastName = stringValue(input.lastName);
   const companyName = requiredString(input.companyName, "companyName");
-  if (!Array.isArray(input.emails) || input.emails.length === 0) throw new HttpsError("invalid-argument", "At least one email is required.");
-  const emails = input.emails.map((email) => {
+  const rawEmails = Array.isArray(input.emails) ? input.emails : [];
+  const emails = rawEmails.map((email) => {
     const address = normalizeEmail(requiredString(email?.address, "email.address"));
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) throw new HttpsError("invalid-argument", `Invalid email: ${address}`);
     return {id: requiredString(email.id, "email.id"), address, label: stringValue(email.label)};
   });
   if (new Set(emails.map((email) => email.address)).size !== emails.length) throw new HttpsError("invalid-argument", "The same email cannot be added twice.");
-  const primaryEmailId = requiredString(input.primaryEmailId, "primaryEmailId");
-  if (!emails.some((email) => email.id === primaryEmailId)) throw new HttpsError("invalid-argument", "Primary email must belong to the contact.");
+  const primaryEmailId = stringValue(input.primaryEmailId);
+  if (emails.length > 0 && !emails.some((email) => email.id === primaryEmailId)) throw new HttpsError("invalid-argument", "Primary email must belong to the contact.");
+  if (emails.length === 0 && primaryEmailId) throw new HttpsError("invalid-argument", "A contact without emails cannot have a primary email.");
   const segments = Array.isArray(input.segments) ? [...new Set(input.segments.map(stringValue).filter(Boolean))] : [];
   return {
     id: stringValue(input.id),
@@ -154,7 +156,7 @@ function validateContact(input) {
     linkedinUrl: stringValue(input.linkedinUrl),
     source: stringValue(input.source),
     segments,
-    canReceiveCampaignEmails: input.canReceiveCampaignEmails === true,
+    canReceiveCampaignEmails: emails.length > 0 && input.canReceiveCampaignEmails === true,
   };
 }
 

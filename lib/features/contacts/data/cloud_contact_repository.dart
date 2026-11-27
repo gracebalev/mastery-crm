@@ -80,7 +80,7 @@ class CloudContactRepository implements ContactRepository {
             },
           )
           .toList(),
-      'primaryEmailId': contact.primaryEmailId,
+      'primaryEmailId': contact.primaryEmailId ?? '',
       'role': contact.role ?? '',
       'linkedinUrl': contact.linkedinUrl ?? '',
       'source': contact.source ?? '',
@@ -97,12 +97,8 @@ class CloudContactRepository implements ContactRepository {
     updatedAt: _date(map['updatedAt']),
   );
 
-  Contact _contactFromMap(Map<String, Object?> map) => Contact(
-    id: map['id'] as String,
-    companyId: map['companyId'] as String,
-    firstName: map['firstName'] as String,
-    lastName: map['lastName'] as String? ?? '',
-    emails: _mapList(map['emails'])
+  Contact _contactFromMap(Map<String, Object?> map) {
+    final emails = _mapList(map['emails'])
         .map(
           (email) => ContactEmail(
             id: email['id'] as String,
@@ -110,18 +106,32 @@ class CloudContactRepository implements ContactRepository {
             label: _optionalString(email['label']),
           ),
         )
-        .toList(),
-    primaryEmailId: map['primaryEmailId'] as String,
-    role: _optionalString(map['role']),
-    linkedinUrl: _optionalString(map['linkedinUrl']),
-    source: _optionalString(map['source']),
-    segments: (map['segments'] as List<Object?>? ?? const [])
-        .whereType<String>()
-        .toList(),
-    canReceiveCampaignEmails: map['canReceiveCampaignEmails'] as bool? ?? false,
-    createdAt: _date(map['createdAt']),
-    updatedAt: _date(map['updatedAt']),
-  );
+        .toList();
+    final storedPrimaryEmailId = _optionalString(map['primaryEmailId']);
+    final primaryEmailId =
+        emails.any((email) => email.id == storedPrimaryEmailId)
+        ? storedPrimaryEmailId
+        : emails.firstOrNull?.id;
+    return Contact(
+      id: map['id'] as String,
+      companyId: map['companyId'] as String,
+      firstName: map['firstName'] as String,
+      lastName: map['lastName'] as String? ?? '',
+      emails: emails,
+      primaryEmailId: primaryEmailId,
+      role: _optionalString(map['role']),
+      linkedinUrl: _optionalString(map['linkedinUrl']),
+      source: _optionalString(map['source']),
+      segments: (map['segments'] as List<Object?>? ?? const [])
+          .whereType<String>()
+          .toList(),
+      canReceiveCampaignEmails:
+          primaryEmailId != null &&
+          (map['canReceiveCampaignEmails'] as bool? ?? false),
+      createdAt: _date(map['createdAt']),
+      updatedAt: _date(map['updatedAt']),
+    );
+  }
 
   List<Map<String, Object?>> _mapList(Object? value) =>
       (value as List<Object?>? ?? const [])

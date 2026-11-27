@@ -10,7 +10,9 @@ The first functional release provides:
 
 - companies with persistent contact groups;
 - contact creation, editing and deletion;
-- multiple email addresses with one primary email;
+- contacts may be saved without email while research is in progress;
+- multiple email addresses with one optional primary email;
+- email-status filtering for missing and completed contact records;
 - reusable free-form segment labels;
 - per-column filtering after three characters;
 - CSV import and export with user-facing headers;

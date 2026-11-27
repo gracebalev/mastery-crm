@@ -71,13 +71,13 @@ class FirestoreContactRepository implements ContactRepository {
       }
 
       final now = FieldValue.serverTimestamp();
-      final primary = contact.emails.firstWhere(
-        (email) => email.id == contact.primaryEmailId,
-      );
+      final primary = contact.primaryEmail;
       transaction.set(companyRef, {
         'name': companyName,
         'normalizedName': companyName.toLowerCase(),
-        'domain': _domainFromEmail(primary.address),
+        'domain': primary == null
+            ? (existingCompany.data()?['domain'] ?? '')
+            : _domainFromEmail(primary.address),
         'createdAt': existingCompany.data()?['createdAt'] ?? now,
         'updatedAt': now,
       });
@@ -100,7 +100,8 @@ class FirestoreContactRepository implements ContactRepository {
         'linkedinUrl': contact.linkedinUrl ?? '',
         'source': contact.source ?? '',
         'segments': contact.segments,
-        'canReceiveCampaignEmails': contact.canReceiveCampaignEmails,
+        'canReceiveCampaignEmails':
+            primary != null && contact.canReceiveCampaignEmails,
         'createdAt': existingContact.data()?['createdAt'] ?? now,
         'updatedAt': now,
       });
@@ -160,11 +161,12 @@ class FirestoreContactRepository implements ContactRepository {
     if (value.companyName.trim().isEmpty || contact.firstName.trim().isEmpty) {
       throw StateError('Company and full name are required.');
     }
-    if (contact.emails.isEmpty) {
-      throw StateError('At least one email is required.');
-    }
-    if (!contact.emails.any((email) => email.id == contact.primaryEmailId)) {
+    if (contact.emails.isNotEmpty &&
+        !contact.emails.any((email) => email.id == contact.primaryEmailId)) {
       throw StateError('Primary email must belong to the contact.');
+    }
+    if (contact.emails.isEmpty && contact.primaryEmailId != null) {
+      throw StateError('A contact without emails cannot have a primary email.');
     }
   }
 
@@ -195,13 +197,18 @@ class FirestoreContactRepository implements ContactRepository {
           ),
         )
         .toList();
+    final storedPrimaryEmailId = _optionalString(data['primaryEmailId']);
+    final primaryEmailId =
+        emails.any((email) => email.id == storedPrimaryEmailId)
+        ? storedPrimaryEmailId
+        : emails.firstOrNull?.id;
     return Contact(
       id: document.id,
       companyId: data['companyId'] as String,
       firstName: data['firstName'] as String,
       lastName: data['lastName'] as String? ?? '',
       emails: emails,
-      primaryEmailId: data['primaryEmailId'] as String,
+      primaryEmailId: primaryEmailId,
       role: _optionalString(data['role']),
       linkedinUrl: _optionalString(data['linkedinUrl']),
       source: _optionalString(data['source']),
@@ -209,7 +216,8 @@ class FirestoreContactRepository implements ContactRepository {
           .whereType<String>()
           .toList(),
       canReceiveCampaignEmails:
-          data['canReceiveCampaignEmails'] as bool? ?? false,
+          primaryEmailId != null &&
+          (data['canReceiveCampaignEmails'] as bool? ?? false),
       createdAt: _date(data['createdAt']),
       updatedAt: _date(data['updatedAt']),
     );

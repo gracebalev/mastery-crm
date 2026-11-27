@@ -190,6 +190,40 @@ class _ContactsPageState extends State<ContactsPage> {
           icon: const Icon(Icons.tune, size: 17),
           label: const Text('Filters'),
         ),
+        const SizedBox(width: 8),
+        PopupMenuButton<EmailFilter>(
+          initialValue: _controller.emailFilter,
+          tooltip: 'Filter by email status',
+          onSelected: _controller.setEmailFilter,
+          itemBuilder: (context) => EmailFilter.values
+              .map(
+                (filter) => CheckedPopupMenuItem<EmailFilter>(
+                  value: filter,
+                  checked: filter == _controller.emailFilter,
+                  child: Text(_emailFilterLabel(filter)),
+                ),
+              )
+              .toList(),
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: borderColor),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.alternate_email, size: 17),
+                const SizedBox(width: 7),
+                Text(_emailFilterLabel(_controller.emailFilter)),
+                const SizedBox(width: 5),
+                const Icon(Icons.arrow_drop_down, size: 18),
+              ],
+            ),
+          ),
+        ),
         const Spacer(),
         TextButton.icon(
           onPressed: _isImporting ? null : _importCsv,
@@ -249,6 +283,12 @@ class _ContactsPageState extends State<ContactsPage> {
       ),
     );
   }
+
+  String _emailFilterLabel(EmailFilter filter) => switch (filter) {
+    EmailFilter.all => 'All emails',
+    EmailFilter.missing => 'Missing email',
+    EmailFilter.hasEmail => 'Has email',
+  };
 
   Widget _emptyState() => Center(
     child: Column(
@@ -659,9 +699,17 @@ class _ContactRow extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     Text(
-                      contact.primaryEmail.address,
+                      contact.primaryEmail?.address ?? 'No email',
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: mutedInk, fontSize: 12),
+                      style: TextStyle(
+                        color: contact.hasPrimaryEmail
+                            ? mutedInk
+                            : placeholderInk,
+                        fontSize: 12,
+                        fontStyle: contact.hasPrimaryEmail
+                            ? FontStyle.normal
+                            : FontStyle.italic,
+                      ),
                     ),
                   ],
                 ),
