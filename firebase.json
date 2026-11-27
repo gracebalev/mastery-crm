@@ -1,4 +1,9 @@
 {
+  "auth": {
+    "providers": {
+      "anonymous": true
+    }
+  },
   "functions": {
     "source": "functions",
     "runtime": "nodejs22"
