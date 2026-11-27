@@ -18,6 +18,7 @@ class ContactsPage extends StatefulWidget {
 
 class _ContactsPageState extends State<ContactsPage> {
   late final ContactController _controller;
+  final Set<String> _collapsedCompanyIds = {};
   bool _isImporting = false;
 
   @override
@@ -128,21 +129,31 @@ class _ContactsPageState extends State<ContactsPage> {
               : ListView.separated(
                   itemCount: _controller.visibleGroups.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 14),
-                  itemBuilder: (context, index) => _CompanyCard(
-                    group: _controller.visibleGroups[index],
-                    controller: _controller,
-                    onAdd: (company) => showContactDialog(
-                      context: context,
-                      controller: _controller,
-                      initialCompany: company,
-                    ),
-                    onEdit: (contact) => showContactDialog(
-                      context: context,
-                      controller: _controller,
-                      contact: contact,
-                    ),
-                    onDelete: _confirmDelete,
-                  ),
+                  itemBuilder: (context, index) {
+                    final group = _controller.visibleGroups[index];
+                    final companyId = group.company.id;
+                    return _CompanyCard(
+                      key: ValueKey(companyId),
+                      group: group,
+                      expanded: !_collapsedCompanyIds.contains(companyId),
+                      onToggle: () => setState(() {
+                        if (!_collapsedCompanyIds.add(companyId)) {
+                          _collapsedCompanyIds.remove(companyId);
+                        }
+                      }),
+                      onAdd: (company) => showContactDialog(
+                        context: context,
+                        controller: _controller,
+                        initialCompany: company,
+                      ),
+                      onEdit: (contact) => showContactDialog(
+                        context: context,
+                        controller: _controller,
+                        contact: contact,
+                      ),
+                      onDelete: _confirmDelete,
+                    );
+                  },
                 ),
         ),
       ],
@@ -466,31 +477,27 @@ class _ContactsPageState extends State<ContactsPage> {
   }
 }
 
-class _CompanyCard extends StatefulWidget {
+class _CompanyCard extends StatelessWidget {
   const _CompanyCard({
+    super.key,
     required this.group,
-    required this.controller,
+    required this.expanded,
+    required this.onToggle,
     required this.onAdd,
     required this.onEdit,
     required this.onDelete,
   });
   final CompanyContactGroup group;
-  final ContactController controller;
+  final bool expanded;
+  final VoidCallback onToggle;
   final ValueChanged<Company> onAdd;
   final ValueChanged<Contact> onEdit;
   final ValueChanged<Contact> onDelete;
 
   @override
-  State<_CompanyCard> createState() => _CompanyCardState();
-}
-
-class _CompanyCardState extends State<_CompanyCard> {
-  bool expanded = true;
-
-  @override
   Widget build(BuildContext context) {
-    final company = widget.group.company;
-    final contacts = widget.group.contacts;
+    final company = group.company;
+    final contacts = group.contacts;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -501,7 +508,7 @@ class _CompanyCardState extends State<_CompanyCard> {
       child: Column(
         children: [
           InkWell(
-            onTap: () => setState(() => expanded = !expanded),
+            onTap: onToggle,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
@@ -549,7 +556,7 @@ class _CompanyCardState extends State<_CompanyCard> {
                   ),
                   const SizedBox(width: 14),
                   OutlinedButton.icon(
-                    onPressed: () => widget.onAdd(company),
+                    onPressed: () => onAdd(company),
                     icon: const Icon(Icons.add, size: 16),
                     label: const Text('Add contact'),
                   ),
@@ -572,8 +579,8 @@ class _CompanyCardState extends State<_CompanyCard> {
               ...contacts.map(
                 (contact) => _ContactRow(
                   contact: contact,
-                  onEdit: widget.onEdit,
-                  onDelete: widget.onDelete,
+                  onEdit: onEdit,
+                  onDelete: onDelete,
                 ),
               ),
           ],
