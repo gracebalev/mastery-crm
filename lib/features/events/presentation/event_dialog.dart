@@ -31,7 +31,8 @@ class _EventDialogState extends State<_EventDialog> {
   late final TextEditingController _location;
   late final TextEditingController _website;
   late final TextEditingController _notes;
-  DateTime? _date;
+  DateTime? _startDate;
+  DateTime? _endDate;
   bool _saving = false;
   String? _error;
 
@@ -42,7 +43,8 @@ class _EventDialogState extends State<_EventDialog> {
     _location = TextEditingController(text: widget.event?.location ?? '');
     _website = TextEditingController(text: widget.event?.websiteUrl ?? '');
     _notes = TextEditingController(text: widget.event?.notes ?? '');
-    _date = widget.event?.date;
+    _startDate = widget.event?.startDate;
+    _endDate = widget.event?.endDate;
   }
 
   @override
@@ -103,17 +105,21 @@ class _EventDialogState extends State<_EventDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _label('DATE'),
+                        _label('START DATE'),
                         InkWell(
-                          onTap: _pickDate,
+                          onTap: _pickStartDate,
                           child: InputDecorator(
                             decoration: const InputDecoration(
                               suffixIcon: Icon(Icons.calendar_today, size: 18),
                             ),
                             child: Text(
-                              _date == null ? 'Optional' : _formatDate(_date!),
+                              _startDate == null
+                                  ? 'Optional'
+                                  : _formatDate(_startDate!),
                               style: TextStyle(
-                                color: _date == null ? placeholderInk : ink,
+                                color: _startDate == null
+                                    ? placeholderInk
+                                    : ink,
                               ),
                             ),
                           ),
@@ -122,9 +128,34 @@ class _EventDialogState extends State<_EventDialog> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(child: _field('LOCATION', _location, 'e.g. Warsaw')),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('END DATE'),
+                        InkWell(
+                          onTap: _pickEndDate,
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              suffixIcon: Icon(Icons.calendar_today, size: 18),
+                            ),
+                            child: Text(
+                              _endDate == null
+                                  ? 'Optional'
+                                  : _formatDate(_endDate!),
+                              style: TextStyle(
+                                color: _endDate == null ? placeholderInk : ink,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
+              const SizedBox(height: 16),
+              _field('LOCATION', _location, 'e.g. Warsaw'),
               const SizedBox(height: 16),
               _field('WEBSITE URL', _website, 'https://event.example.com'),
               const SizedBox(height: 16),
@@ -186,18 +217,41 @@ class _EventDialogState extends State<_EventDialog> {
     ),
   );
 
-  Future<void> _pickDate() async {
+  Future<void> _pickStartDate() async {
     final selected = await showDatePicker(
       context: context,
-      initialDate: _date ?? DateTime.now(),
+      initialDate: _startDate ?? _endDate ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
-    if (selected != null) setState(() => _date = selected);
+    if (selected != null) {
+      setState(() {
+        _startDate = selected;
+        if (_endDate != null && _endDate!.isBefore(selected)) {
+          _endDate = selected;
+        }
+      });
+    }
+  }
+
+  Future<void> _pickEndDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? _startDate ?? DateTime.now(),
+      firstDate: _startDate ?? DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (selected != null) setState(() => _endDate = selected);
   }
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (_startDate != null &&
+        _endDate != null &&
+        _endDate!.isBefore(_startDate!)) {
+      setState(() => _error = 'End date cannot be before start date.');
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -206,7 +260,8 @@ class _EventDialogState extends State<_EventDialog> {
       await widget.controller.save(
         EventFormValue(
           name: _name.text,
-          date: _date,
+          startDate: _startDate,
+          endDate: _endDate,
           location: _location.text,
           websiteUrl: _website.text,
           notes: _notes.text,

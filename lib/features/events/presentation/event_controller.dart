@@ -54,9 +54,11 @@ class EventController extends ChangeNotifier {
       final matchesFilter = switch (filter) {
         EventFilter.all => true,
         EventFilter.upcoming =>
-          event.date == null || !event.date!.isBefore(_startOfDay(today)),
+          _eventEnd(event) == null ||
+              !_eventEnd(event)!.isBefore(_startOfDay(today)),
         EventFilter.past =>
-          event.date != null && event.date!.isBefore(_startOfDay(today)),
+          _eventEnd(event) != null &&
+              _eventEnd(event)!.isBefore(_startOfDay(today)),
       };
       return matchesSearch && matchesFilter;
     }).toList();
@@ -86,7 +88,8 @@ class EventController extends ChangeNotifier {
       MasteryEvent(
         id: existing?.id ?? '',
         name: value.name.trim(),
-        date: value.date,
+        startDate: value.startDate,
+        endDate: value.endDate,
         location: _optional(value.location),
         websiteUrl: _optional(value.websiteUrl),
         notes: _optional(value.notes),
@@ -106,6 +109,8 @@ class EventController extends ChangeNotifier {
 
   DateTime _startOfDay(DateTime value) =>
       DateTime(value.year, value.month, value.day);
+
+  DateTime? _eventEnd(MasteryEvent event) => event.endDate ?? event.startDate;
 }
 
 enum EventFilter { all, upcoming, past }
@@ -113,14 +118,16 @@ enum EventFilter { all, upcoming, past }
 class EventFormValue {
   const EventFormValue({
     required this.name,
-    this.date,
+    this.startDate,
+    this.endDate,
     required this.location,
     required this.websiteUrl,
     required this.notes,
   });
 
   final String name;
-  final DateTime? date;
+  final DateTime? startDate;
+  final DateTime? endDate;
   final String location;
   final String websiteUrl;
   final String notes;

@@ -2,7 +2,8 @@ class MasteryEvent {
   const MasteryEvent({
     required this.id,
     required this.name,
-    this.date,
+    this.startDate,
+    this.endDate,
     this.location,
     this.websiteUrl,
     this.notes,
@@ -12,7 +13,8 @@ class MasteryEvent {
 
   final String id;
   final String name;
-  final DateTime? date;
+  final DateTime? startDate;
+  final DateTime? endDate;
   final String? location;
   final String? websiteUrl;
   final String? notes;

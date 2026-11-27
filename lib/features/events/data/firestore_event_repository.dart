@@ -17,12 +17,12 @@ class FirestoreEventRepository implements EventRepository {
     final snapshot = await _events.get();
     final events = snapshot.docs.map(_fromDocument).toList()
       ..sort((a, b) {
-        if (a.date == null && b.date == null) {
+        if (a.startDate == null && b.startDate == null) {
           return a.name.toLowerCase().compareTo(b.name.toLowerCase());
         }
-        if (a.date == null) return 1;
-        if (b.date == null) return -1;
-        return b.date!.compareTo(a.date!);
+        if (a.startDate == null) return 1;
+        if (b.startDate == null) return -1;
+        return b.startDate!.compareTo(a.startDate!);
       });
     return events;
   }
@@ -37,7 +37,12 @@ class FirestoreEventRepository implements EventRepository {
     await reference.set({
       'name': name,
       'normalizedName': name.toLowerCase(),
-      'date': event.date == null ? null : Timestamp.fromDate(event.date!),
+      'startDate': event.startDate == null
+          ? null
+          : Timestamp.fromDate(event.startDate!),
+      'endDate': event.endDate == null
+          ? null
+          : Timestamp.fromDate(event.endDate!),
       'location': event.location ?? '',
       'websiteUrl': event.websiteUrl ?? '',
       'notes': event.notes ?? '',
@@ -68,10 +73,12 @@ class FirestoreEventRepository implements EventRepository {
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) {
     final data = document.data();
+    final legacyDate = (data['date'] as Timestamp?)?.toDate();
     return MasteryEvent(
       id: document.id,
       name: data['name'] as String? ?? '',
-      date: (data['date'] as Timestamp?)?.toDate(),
+      startDate: (data['startDate'] as Timestamp?)?.toDate() ?? legacyDate,
+      endDate: (data['endDate'] as Timestamp?)?.toDate(),
       location: _optional(data['location']),
       websiteUrl: _optional(data['websiteUrl']),
       notes: _optional(data['notes']),

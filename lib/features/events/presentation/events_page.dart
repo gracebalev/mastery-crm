@@ -388,7 +388,10 @@ class _EventCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                Expanded(flex: 2, child: Text(_date(event.date))),
+                Expanded(
+                  flex: 2,
+                  child: Text(_dateRange(event.startDate, event.endDate)),
+                ),
                 Expanded(flex: 2, child: Text(event.location ?? '—')),
                 Expanded(
                   flex: 2,
@@ -500,9 +503,22 @@ class _EventCard extends StatelessWidget {
     ),
   );
 
-  static String _date(DateTime? date) => date == null
-      ? 'No date'
-      : '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+  static String _dateRange(DateTime? startDate, DateTime? endDate) {
+    if (startDate == null && endDate == null) return 'No dates';
+    if (startDate == null) return 'Until ${_date(endDate!)}';
+    if (endDate == null || _sameDay(startDate, endDate)) {
+      return _date(startDate);
+    }
+    return '${_date(startDate)} – ${_date(endDate)}';
+  }
+
+  static String _date(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+
+  static bool _sameDay(DateTime first, DateTime second) =>
+      first.year == second.year &&
+      first.month == second.month &&
+      first.day == second.day;
 
   static String _initials(String name) => name
       .split(RegExp(r'\s+'))

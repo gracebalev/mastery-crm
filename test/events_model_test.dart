@@ -76,7 +76,36 @@ void main() {
     );
 
     expect(events.saved.single.name, 'Web Summit');
-    expect(events.saved.single.date, isNull);
+    expect(events.saved.single.startDate, isNull);
+    expect(events.saved.single.endDate, isNull);
+    controller.dispose();
+  });
+
+  test('event stores a start and end date', () async {
+    final events = _MemoryEventRepository([]);
+    final controller = EventController(
+      events,
+      _MemoryContactRepository(
+        const ContactDirectory(companies: [], contacts: []),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final startDate = DateTime(2027, 3, 10);
+    final endDate = DateTime(2027, 3, 12);
+    await controller.save(
+      EventFormValue(
+        name: 'Web Summit',
+        startDate: startDate,
+        endDate: endDate,
+        location: '',
+        websiteUrl: '',
+        notes: '',
+      ),
+    );
+
+    expect(events.saved.single.startDate, startDate);
+    expect(events.saved.single.endDate, endDate);
     controller.dispose();
   });
 }
