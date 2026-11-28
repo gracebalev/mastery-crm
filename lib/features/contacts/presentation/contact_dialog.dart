@@ -135,9 +135,7 @@ class _ContactDialogState extends State<_ContactDialog> {
                     _fieldLabel('FULL NAME', required: true),
                     TextFormField(
                       controller: _name,
-                      decoration: const InputDecoration(
-                        hintText: 'e.g. Anna Kowalska',
-                      ),
+                      decoration: const InputDecoration(),
                       validator: _required,
                     ),
                     const SizedBox(height: 18),
@@ -174,9 +172,7 @@ class _ContactDialogState extends State<_ContactDialog> {
                             return TextFormField(
                               controller: textController,
                               focusNode: focusNode,
-                              decoration: const InputDecoration(
-                                hintText: 'Choose or create a company',
-                              ),
+                              decoration: const InputDecoration(),
                               validator: _required,
                             );
                           },
@@ -192,6 +188,7 @@ class _ContactDialogState extends State<_ContactDialog> {
                         ),
                       ],
                     ),
+                    if (_emails.isNotEmpty) _emailColumnsHeader(),
                     if (_emails.isEmpty)
                       const Padding(
                         padding: EdgeInsets.only(bottom: 10),
@@ -206,22 +203,17 @@ class _ContactDialogState extends State<_ContactDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: _labeledField(
-                            'ROLE IN COMPANY',
-                            _role,
-                            'e.g. Marketing Director',
-                          ),
+                          child: _labeledField('ROLE IN COMPANY', _role),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _fieldLabel('EVENT / SOURCE'),
+                              _fieldLabel('EVENT'),
                               DropdownButtonFormField<String>(
                                 initialValue: _sourceEventId,
                                 isExpanded: true,
-                                hint: const Text('Select an existing event'),
                                 items: [
                                   const DropdownMenuItem(
                                     value: '',
@@ -253,17 +245,13 @@ class _ContactDialogState extends State<_ContactDialog> {
                     _fieldLabel('SOURCE NOTE'),
                     TextFormField(
                       controller: _sourceNote,
-                      decoration: const InputDecoration(
-                        hintText: 'e.g. Met after the leadership panel',
-                      ),
+                      decoration: const InputDecoration(),
                     ),
                     const SizedBox(height: 18),
                     _fieldLabel('LINKEDIN URL'),
                     TextFormField(
                       controller: _linkedin,
-                      decoration: const InputDecoration(
-                        hintText: 'https://linkedin.com/in/anna-kowalska',
-                      ),
+                      decoration: const InputDecoration(),
                       validator: (value) {
                         final text = value?.trim() ?? '';
                         if (text.isEmpty) return null;
@@ -312,7 +300,6 @@ class _ContactDialogState extends State<_ContactDialog> {
                                     controller: textController,
                                     focusNode: focusNode,
                                     decoration: InputDecoration(
-                                      hintText: 'Type a label',
                                       suffixIcon: IconButton(
                                         icon: const Icon(Icons.add),
                                         onPressed: () =>
@@ -435,11 +422,7 @@ class _ContactDialogState extends State<_ContactDialog> {
         final addressField = TextFormField(
           controller: email.address,
           onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            labelText: email.id == _primaryEmailId
-                ? 'Primary email'
-                : 'Email (optional)',
-          ),
+          decoration: const InputDecoration(),
           validator: (value) {
             final text = normalizeEmail(value ?? '');
             if (text.isEmpty) return null;
@@ -450,10 +433,7 @@ class _ContactDialogState extends State<_ContactDialog> {
         );
         final labelField = TextFormField(
           controller: email.label,
-          decoration: const InputDecoration(
-            labelText: 'Label',
-            hintText: 'Work',
-          ),
+          decoration: const InputDecoration(),
         );
         final deleteButton = IconButton(
           tooltip: 'Delete email',
@@ -462,6 +442,7 @@ class _ContactDialogState extends State<_ContactDialog> {
         );
         if (constraints.maxWidth < 500) {
           return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -473,7 +454,10 @@ class _ContactDialogState extends State<_ContactDialog> {
               ),
               Padding(
                 padding: const EdgeInsets.only(left: 48, right: 48, top: 8),
-                child: labelField,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [_emailColumnLabel('LABEL'), labelField],
+                ),
               ),
             ],
           );
@@ -492,20 +476,62 @@ class _ContactDialogState extends State<_ContactDialog> {
     ),
   );
 
-  Widget _labeledField(
-    String label,
-    TextEditingController controller,
-    String hint,
-  ) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _fieldLabel(label),
-      TextFormField(
-        controller: controller,
-        decoration: InputDecoration(hintText: hint),
-      ),
-    ],
+  Widget _emailColumnsHeader() => LayoutBuilder(
+    builder: (context, constraints) {
+      if (constraints.maxWidth < 500) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 48,
+                child: Center(child: _emailColumnLabel('PRIMARY')),
+              ),
+              Expanded(child: _emailColumnLabel('EMAIL')),
+              const SizedBox(width: 48),
+            ],
+          ),
+        );
+      }
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 48,
+              child: Center(child: _emailColumnLabel('PRIMARY')),
+            ),
+            Expanded(flex: 3, child: _emailColumnLabel('EMAIL')),
+            const SizedBox(width: 10),
+            Expanded(child: _emailColumnLabel('LABEL')),
+            const SizedBox(width: 48),
+          ],
+        ),
+      );
+    },
   );
+
+  Widget _emailColumnLabel(String text) => Text(
+    text,
+    style: const TextStyle(
+      color: mutedInk,
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.4,
+    ),
+  );
+
+  Widget _labeledField(String label, TextEditingController controller) =>
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _fieldLabel(label),
+          TextFormField(
+            controller: controller,
+            decoration: const InputDecoration(),
+          ),
+        ],
+      );
 
   Widget _fieldLabel(String text, {bool required = false}) => Padding(
     padding: const EdgeInsets.only(bottom: 7),

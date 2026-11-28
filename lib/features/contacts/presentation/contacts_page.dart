@@ -1005,7 +1005,7 @@ class _ContactHeader extends StatelessWidget {
       children: [
         Expanded(flex: 3, child: Text('CONTACT', style: _headerStyle)),
         Expanded(flex: 2, child: Text('ROLE', style: _headerStyle)),
-        Expanded(flex: 3, child: Text('EVENT / SOURCE', style: _headerStyle)),
+        Expanded(flex: 3, child: Text('EVENT', style: _headerStyle)),
         Expanded(flex: 3, child: Text('LINKEDIN', style: _headerStyle)),
         Expanded(flex: 2, child: Text('SEGMENT', style: _headerStyle)),
         SizedBox(width: 42),
