@@ -58,135 +58,149 @@ class _EventDialogState extends State<_EventDialog> {
 
   @override
   Widget build(BuildContext context) => Dialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     child: SizedBox(
       width: 560,
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.event == null ? 'New event' : 'Edit event',
-                      style: Theme.of(context).textTheme.headlineSmall,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height - 48,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.event == null ? 'New event' : 'Edit event',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: _saving ? null : () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const Text(
-                'Save the event where contacts were discovered.',
-                style: TextStyle(color: mutedInk),
-              ),
-              const SizedBox(height: 22),
-              _label('EVENT NAME', required: true),
-              TextFormField(
-                controller: _name,
-                decoration: const InputDecoration(
-                  hintText: 'e.g. Warsaw Growth Summit',
+                    IconButton(
+                      onPressed: _saving ? null : () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
                 ),
-                validator: (value) => value?.trim().isEmpty ?? true
-                    ? 'Event name is required.'
-                    : null,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _label('START DATE'),
-                        InkWell(
-                          onTap: _pickStartDate,
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              suffixIcon: Icon(Icons.calendar_today, size: 18),
-                            ),
-                            child: Text(
-                              _startDate == null
-                                  ? 'Optional'
-                                  : _formatDate(_startDate!),
-                              style: TextStyle(
-                                color: _startDate == null
-                                    ? placeholderInk
-                                    : ink,
+                const Text(
+                  'Save the event where contacts were discovered.',
+                  style: TextStyle(color: mutedInk),
+                ),
+                const SizedBox(height: 22),
+                _label('EVENT NAME', required: true),
+                TextFormField(
+                  controller: _name,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. Warsaw Growth Summit',
+                  ),
+                  validator: (value) => value?.trim().isEmpty ?? true
+                      ? 'Event name is required.'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _label('START DATE'),
+                          InkWell(
+                            onTap: _pickStartDate,
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                suffixIcon: Icon(
+                                  Icons.calendar_today,
+                                  size: 18,
+                                ),
+                              ),
+                              child: Text(
+                                _startDate == null
+                                    ? 'Optional'
+                                    : _formatDate(_startDate!),
+                                style: TextStyle(
+                                  color: _startDate == null
+                                      ? placeholderInk
+                                      : ink,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _label('END DATE'),
-                        InkWell(
-                          onTap: _pickEndDate,
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              suffixIcon: Icon(Icons.calendar_today, size: 18),
-                            ),
-                            child: Text(
-                              _endDate == null
-                                  ? 'Optional'
-                                  : _formatDate(_endDate!),
-                              style: TextStyle(
-                                color: _endDate == null ? placeholderInk : ink,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _label('END DATE'),
+                          InkWell(
+                            onTap: _pickEndDate,
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                suffixIcon: Icon(
+                                  Icons.calendar_today,
+                                  size: 18,
+                                ),
+                              ),
+                              child: Text(
+                                _endDate == null
+                                    ? 'Optional'
+                                    : _formatDate(_endDate!),
+                                style: TextStyle(
+                                  color: _endDate == null
+                                      ? placeholderInk
+                                      : ink,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _field('LOCATION', _location, 'e.g. Warsaw'),
-              const SizedBox(height: 16),
-              _field('WEBSITE URL', _website, 'https://event.example.com'),
-              const SizedBox(height: 16),
-              _label('NOTES'),
-              TextFormField(
-                controller: _notes,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  hintText: 'What made this event relevant?',
+                  ],
                 ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!, style: const TextStyle(color: Colors.red)),
+                const SizedBox(height: 16),
+                _field('LOCATION', _location, 'e.g. Warsaw'),
+                const SizedBox(height: 16),
+                _field('WEBSITE URL', _website, 'https://event.example.com'),
+                const SizedBox(height: 16),
+                _label('NOTES'),
+                TextFormField(
+                  controller: _notes,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    hintText: 'What made this event relevant?',
+                  ),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                ],
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: _saving ? null : () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton(
+                      onPressed: _saving ? null : _save,
+                      child: Text(_saving ? 'Saving...' : 'Save event'),
+                    ),
+                  ],
+                ),
               ],
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: _saving ? null : () => Navigator.pop(context),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: _saving ? null : _save,
-                    child: Text(_saving ? 'Saving...' : 'Save event'),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),

@@ -54,29 +54,136 @@ class _EventsPageState extends State<EventsPage> {
     body: AnimatedBuilder(
       animation: _controller,
       builder: (context, _) => LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: constraints.maxWidth < 1080 ? 1080 : constraints.maxWidth,
-            height: constraints.maxHeight,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(40, 34, 40, 30),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _header(),
-                  const SizedBox(height: 26),
-                  _toolbar(),
-                  const SizedBox(height: 26),
-                  Expanded(child: _body()),
-                ],
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 700) return _mobileContent();
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: constraints.maxWidth < 1080 ? 1080 : constraints.maxWidth,
+              height: constraints.maxHeight,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(40, 34, 40, 30),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _header(),
+                    const SizedBox(height: 26),
+                    _toolbar(),
+                    const SizedBox(height: 26),
+                    Expanded(child: _body()),
+                  ],
+                ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     ),
   );
+
+  Widget _mobileContent() => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Events',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () =>
+                  showEventDialog(context: context, controller: _controller),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          onChanged: _controller.setSearch,
+          decoration: const InputDecoration(
+            hintText: 'Search events',
+            prefixIcon: Icon(Icons.search),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _filterChip('All events', EventFilter.all),
+              const SizedBox(width: 8),
+              _filterChip('Upcoming', EventFilter.upcoming),
+              const SizedBox(width: 8),
+              _filterChip('Past', EventFilter.past),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(child: _mobileBody()),
+      ],
+    ),
+  );
+
+  Widget _mobileBody() {
+    if (_controller.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_controller.error != null) {
+      return Center(
+        child: OutlinedButton(
+          onPressed: _controller.reload,
+          child: const Text('Could not load events · Try again'),
+        ),
+      );
+    }
+    final events = _controller.visibleEvents;
+    if (events.isEmpty) {
+      return const Center(
+        child: Text(
+          'No events match this search.',
+          style: TextStyle(color: mutedInk),
+        ),
+      );
+    }
+    return ListView.separated(
+      itemCount: events.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final event = events[index];
+        return _EventCard(
+          compact: true,
+          event: event,
+          contacts: _controller.contactsFor(event.id),
+          companyName: _controller.companyName,
+          expanded: _expanded.contains(event.id),
+          onToggle: () => setState(() {
+            if (!_expanded.add(event.id)) _expanded.remove(event.id);
+          }),
+          onEditEvent: () => showEventDialog(
+            context: context,
+            controller: _controller,
+            event: event,
+          ),
+          onDeleteEvent: () => _confirmDelete(event),
+          onCreateContact: () => _createContact(event),
+          onLinkContact: () => _linkExisting(event),
+          onEditContact: (contact) async {
+            final changed = await showContactDialog(
+              context: context,
+              controller: _contactController,
+              contact: contact,
+            );
+            if (changed) await _controller.reload();
+          },
+        );
+      },
+    );
+  }
 
   Widget _header() => Row(
     children: [
@@ -361,6 +468,7 @@ class _ColumnHeader extends StatelessWidget {
 
 class _EventCard extends StatelessWidget {
   const _EventCard({
+    this.compact = false,
     required this.event,
     required this.contacts,
     required this.companyName,
@@ -373,6 +481,7 @@ class _EventCard extends StatelessWidget {
     required this.onEditContact,
   });
 
+  final bool compact;
   final MasteryEvent event;
   final List<Contact> contacts;
   final String Function(String) companyName;
@@ -385,23 +494,198 @@ class _EventCard extends StatelessWidget {
   final ValueChanged<Contact> onEditContact;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) {
+    if (compact) return _compactCard(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: borderColor),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onToggle,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+              child: Row(
+                children: [
+                  Icon(expanded ? Icons.expand_more : Icons.chevron_right),
+                  const SizedBox(width: 12),
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFE8FF),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.event_outlined,
+                      color: brandPurple,
+                      size: 19,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          event.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        if (event.notes != null)
+                          Text(
+                            event.notes!,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: mutedInk,
+                              fontSize: 11,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(_dateRange(event.startDate, event.endDate)),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(_duration(event.startDate, event.endDate)),
+                  ),
+                  Expanded(flex: 2, child: Text(event.location ?? '—')),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      '${contacts.length} ${contacts.length == 1 ? 'contact' : 'contacts'}',
+                      style: const TextStyle(
+                        color: brandPurple,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    onSelected: (value) =>
+                        value == 'edit' ? onEditEvent() : onDeleteEvent(),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'edit', child: Text('Edit')),
+                      PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (expanded) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
+              child: Row(
+                children: [
+                  const Text(
+                    'SOURCE CONTACTS',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: mutedInk,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  OutlinedButton.icon(
+                    onPressed: onLinkContact,
+                    icon: const Icon(Icons.link, size: 16),
+                    label: const Text('Link existing'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: onCreateContact,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Create contact'),
+                  ),
+                ],
+              ),
+            ),
+            if (contacts.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(28),
+                child: Text(
+                  'No contacts linked to this event yet.',
+                  style: TextStyle(color: mutedInk),
+                ),
+              )
+            else
+              ...contacts.map(
+                (contact) => ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 22),
+                  leading: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: const Color(0xFFEFE8FF),
+                    child: Text(
+                      _initials(contact.fullName),
+                      style: const TextStyle(fontSize: 10, color: brandPurple),
+                    ),
+                  ),
+                  title: Text(
+                    contact.fullName,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(contact.primaryEmail?.address ?? 'No email'),
+                  trailing: SizedBox(
+                    width: 420,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            companyName(contact.companyId),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            contact.role ?? '—',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Edit contact',
+                          onPressed: () => onEditContact(contact),
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _compactCard(BuildContext context) => Container(
     decoration: BoxDecoration(
       color: Colors.white,
       border: Border.all(color: borderColor),
       borderRadius: BorderRadius.circular(14),
     ),
+    clipBehavior: Clip.antiAlias,
     child: Column(
       children: [
         InkWell(
           onTap: onToggle,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(expanded ? Icons.expand_more : Icons.chevron_right),
-                const SizedBox(width: 12),
+                const SizedBox(width: 6),
                 Container(
                   width: 38,
                   height: 38,
@@ -415,42 +699,34 @@ class _EventCard extends StatelessWidget {
                     size: 19,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
-                  flex: 3,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         event.name,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      if (event.notes != null)
-                        Text(
-                          event.notes!,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: mutedInk, fontSize: 11),
+                      const SizedBox(height: 3),
+                      Text(
+                        [
+                          _dateRange(event.startDate, event.endDate),
+                          _duration(event.startDate, event.endDate),
+                          if (event.location != null) event.location!,
+                        ].join(' · '),
+                        style: const TextStyle(color: mutedInk, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${contacts.length} ${contacts.length == 1 ? 'contact' : 'contacts'}',
+                        style: const TextStyle(
+                          color: brandPurple,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
+                      ),
                     ],
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(_dateRange(event.startDate, event.endDate)),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(_duration(event.startDate, event.endDate)),
-                ),
-                Expanded(flex: 2, child: Text(event.location ?? '—')),
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    '${contacts.length} ${contacts.length == 1 ? 'contact' : 'contacts'}',
-                    style: const TextStyle(
-                      color: brandPurple,
-                      fontWeight: FontWeight.w600,
-                    ),
                   ),
                 ),
                 PopupMenuButton<String>(
@@ -468,35 +744,30 @@ class _EventCard extends StatelessWidget {
         if (expanded) ...[
           const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
+            padding: const EdgeInsets.all(10),
             child: Row(
               children: [
-                const Text(
-                  'SOURCE CONTACTS',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: mutedInk,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onLinkContact,
+                    icon: const Icon(Icons.link, size: 16),
+                    label: const Text('Link'),
                   ),
                 ),
-                const Spacer(),
-                OutlinedButton.icon(
-                  onPressed: onLinkContact,
-                  icon: const Icon(Icons.link, size: 16),
-                  label: const Text('Link existing'),
-                ),
                 const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: onCreateContact,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Create contact'),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: onCreateContact,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Create'),
+                  ),
                 ),
               ],
             ),
           ),
           if (contacts.isEmpty)
             const Padding(
-              padding: EdgeInsets.all(28),
+              padding: EdgeInsets.all(20),
               child: Text(
                 'No contacts linked to this event yet.',
                 style: TextStyle(color: mutedInk),
@@ -505,7 +776,6 @@ class _EventCard extends StatelessWidget {
           else
             ...contacts.map(
               (contact) => ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 22),
                 leading: CircleAvatar(
                   radius: 16,
                   backgroundColor: const Color(0xFFEFE8FF),
@@ -521,30 +791,18 @@ class _EventCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                subtitle: Text(contact.primaryEmail?.address ?? 'No email'),
-                trailing: SizedBox(
-                  width: 420,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          companyName(contact.companyId),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          contact.role ?? '—',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Edit contact',
-                        onPressed: () => onEditContact(contact),
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                      ),
-                    ],
-                  ),
+                subtitle: Text(
+                  [
+                    companyName(contact.companyId),
+                    contact.primaryEmail?.address ?? 'No email',
+                  ].join(' · '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: IconButton(
+                  tooltip: 'Edit contact',
+                  onPressed: () => onEditContact(contact),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
                 ),
               ),
             ),

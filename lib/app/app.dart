@@ -17,7 +17,7 @@ class MasteryEmailApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Mastery Email',
+    title: 'Mastery CRM',
     debugShowCheckedModeBanner: false,
     theme: buildAppTheme(),
     home: AuthGate(

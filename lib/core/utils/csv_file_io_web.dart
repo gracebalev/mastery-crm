@@ -14,11 +14,12 @@ Future<String?> pickCsvFile() async {
   return reader.result as String?;
 }
 
-void downloadCsvFile(String filename, String contents) {
+Future<bool> downloadCsvFile(String filename, String contents) async {
   final blob = html.Blob([utf8.encode(contents)], 'text/csv;charset=utf-8');
   final url = html.Url.createObjectUrlFromBlob(blob);
   html.AnchorElement(href: url)
     ..download = filename
     ..click();
   html.Url.revokeObjectUrl(url);
+  return true;
 }

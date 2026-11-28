@@ -420,10 +420,9 @@ class _ContactDialogState extends State<_ContactDialog> {
 
   Widget _emailRow(_EmailEditor email) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        IconButton(
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final primaryButton = IconButton(
           tooltip: 'Make primary',
           onPressed: () => setState(() => _primaryEmailId = email.id),
           icon: Icon(
@@ -432,42 +431,64 @@ class _ContactDialogState extends State<_ContactDialog> {
                 : Icons.radio_button_unchecked,
             color: email.id == _primaryEmailId ? brandPurple : mutedInk,
           ),
-        ),
-        Expanded(
-          flex: 3,
-          child: TextFormField(
-            controller: email.address,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              labelText: email.id == _primaryEmailId
-                  ? 'Primary email'
-                  : 'Email (optional)',
-            ),
-            validator: (value) {
-              final text = normalizeEmail(value ?? '');
-              if (text.isEmpty) return null;
-              return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(text)
-                  ? null
-                  : 'Enter a valid email.';
-            },
+        );
+        final addressField = TextFormField(
+          controller: email.address,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            labelText: email.id == _primaryEmailId
+                ? 'Primary email'
+                : 'Email (optional)',
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: TextFormField(
-            controller: email.label,
-            decoration: const InputDecoration(
-              labelText: 'Label',
-              hintText: 'Work',
-            ),
+          validator: (value) {
+            final text = normalizeEmail(value ?? '');
+            if (text.isEmpty) return null;
+            return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(text)
+                ? null
+                : 'Enter a valid email.';
+          },
+        );
+        final labelField = TextFormField(
+          controller: email.label,
+          decoration: const InputDecoration(
+            labelText: 'Label',
+            hintText: 'Work',
           ),
-        ),
-        IconButton(
+        );
+        final deleteButton = IconButton(
           tooltip: 'Delete email',
           onPressed: () => _removeEmail(email),
           icon: const Icon(Icons.delete_outline),
-        ),
-      ],
+        );
+        if (constraints.maxWidth < 500) {
+          return Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  primaryButton,
+                  Expanded(child: addressField),
+                  deleteButton,
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 48, right: 48, top: 8),
+                child: labelField,
+              ),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            primaryButton,
+            Expanded(flex: 3, child: addressField),
+            const SizedBox(width: 10),
+            Expanded(child: labelField),
+            deleteButton,
+          ],
+        );
+      },
     ),
   );
 

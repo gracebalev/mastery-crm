@@ -49,13 +49,194 @@ class _ContactsPageState extends State<ContactsPage> {
       body: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) => LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: constraints.maxWidth < 1080 ? 1080 : constraints.maxWidth,
-              height: constraints.maxHeight,
-              child: _content(),
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 700) return _mobileContent();
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: constraints.maxWidth < 1080
+                    ? 1080
+                    : constraints.maxWidth,
+                height: constraints.maxHeight,
+                child: _content(),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _mobileContent() => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Contacts',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
             ),
+            ElevatedButton.icon(
+              onPressed: () =>
+                  showContactDialog(context: context, controller: _controller),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          onChanged: _controller.setGlobalSearch,
+          decoration: const InputDecoration(
+            hintText: 'Search contacts or companies',
+            prefixIcon: Icon(Icons.search),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: PopupMenuButton<EmailFilter>(
+                initialValue: _controller.emailFilter,
+                onSelected: _controller.setEmailFilter,
+                itemBuilder: (context) => EmailFilter.values
+                    .map(
+                      (filter) => CheckedPopupMenuItem<EmailFilter>(
+                        value: filter,
+                        checked: filter == _controller.emailFilter,
+                        child: Text(_emailFilterLabel(filter)),
+                      ),
+                    )
+                    .toList(),
+                child: Container(
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: borderColor),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.alternate_email, size: 18),
+                      const SizedBox(width: 7),
+                      Text(_emailFilterLabel(_controller.emailFilter)),
+                      const Icon(Icons.arrow_drop_down),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.outlined(
+              tooltip: 'Column filters',
+              onPressed: _controller.toggleFilters,
+              icon: const Icon(Icons.tune),
+            ),
+            const SizedBox(width: 4),
+            PopupMenuButton<String>(
+              tooltip: 'Import or export CSV',
+              onSelected: (value) {
+                if (value == 'import') {
+                  _importCsv();
+                } else {
+                  _exportCsv();
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'import', child: Text('Import CSV')),
+                PopupMenuItem(value: 'export', child: Text('Export CSV')),
+              ],
+            ),
+          ],
+        ),
+        if (_controller.filtersVisible) ...[
+          const SizedBox(height: 10),
+          _mobileFilters(),
+        ],
+        const SizedBox(height: 12),
+        Text(
+          '${_controller.companies.length} companies · ${_controller.contacts.length} contacts',
+          style: const TextStyle(color: mutedInk, fontSize: 12),
+        ),
+        const SizedBox(height: 10),
+        Expanded(
+          child: _controller.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _controller.loadError != null
+              ? _loadError()
+              : _controller.visibleGroups.isEmpty
+              ? _emptyState()
+              : ListView.separated(
+                  itemCount: _controller.visibleGroups.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final group = _controller.visibleGroups[index];
+                    final companyId = group.company.id;
+                    return _CompanyCard(
+                      key: ValueKey(companyId),
+                      compact: true,
+                      group: group,
+                      eventNames: {
+                        for (final event in _controller.events)
+                          event.id: event.name,
+                      },
+                      expanded: !_collapsedCompanyIds.contains(companyId),
+                      onToggle: () => setState(() {
+                        if (!_collapsedCompanyIds.add(companyId)) {
+                          _collapsedCompanyIds.remove(companyId);
+                        }
+                      }),
+                      onAdd: (company) => showContactDialog(
+                        context: context,
+                        controller: _controller,
+                        initialCompany: company,
+                      ),
+                      onEdit: (contact) => showContactDialog(
+                        context: context,
+                        controller: _controller,
+                        contact: contact,
+                      ),
+                      onDelete: _confirmDelete,
+                    );
+                  },
+                ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _mobileFilters() {
+    const labels = [
+      'Company',
+      'Contact',
+      'Role',
+      'Event / Source',
+      'LinkedIn',
+      'Segment',
+    ];
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 210),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: borderColor),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListView.separated(
+        itemCount: labels.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (context, index) => TextField(
+          onChanged: (value) =>
+              _controller.setColumnFilter(labels[index], value),
+          decoration: InputDecoration(
+            labelText: labels[index],
+            hintText: '3+ characters',
+            isDense: true,
           ),
         ),
       ),
@@ -485,10 +666,15 @@ class _ContactsPageState extends State<ContactsPage> {
     );
   }
 
-  void _exportCsv() {
-    downloadCsvFile('mastery-contacts.csv', _controller.exportCsv());
+  Future<void> _exportCsv() async {
+    final saved = await downloadCsvFile(
+      'mastery-contacts.csv',
+      _controller.exportCsv(),
+    );
+    if (!saved) return;
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('CSV export downloaded.')));
+        .showSnackBar(const SnackBar(content: Text('CSV export saved.')));
   }
 
   Future<void> _confirmDelete(Contact contact) async {
@@ -525,6 +711,7 @@ class _ContactsPageState extends State<ContactsPage> {
 class _CompanyCard extends StatelessWidget {
   const _CompanyCard({
     super.key,
+    this.compact = false,
     required this.group,
     required this.eventNames,
     required this.expanded,
@@ -533,6 +720,7 @@ class _CompanyCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
   });
+  final bool compact;
   final CompanyContactGroup group;
   final Map<String, String> eventNames;
   final bool expanded;
@@ -543,6 +731,7 @@ class _CompanyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (compact) return _compactCard(context);
     final company = group.company;
     final contacts = group.contacts;
     return Container(
@@ -637,6 +826,173 @@ class _CompanyCard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _compactCard(BuildContext context) {
+    final company = group.company;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: borderColor),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+              child: Row(
+                children: [
+                  Icon(
+                    expanded ? Icons.expand_more : Icons.chevron_right,
+                    color: mutedInk,
+                  ),
+                  const SizedBox(width: 6),
+                  _CompanyAvatar(name: company.name),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          company.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          '${group.contacts.length} ${group.contacts.length == 1 ? 'contact' : 'contacts'}',
+                          style: const TextStyle(color: mutedInk, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Add contact',
+                    onPressed: () => onAdd(company),
+                    icon: const Icon(Icons.person_add_alt_1, size: 20),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (expanded) ...[
+            const Divider(height: 1),
+            if (group.contacts.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                  'No contacts in this company.',
+                  style: TextStyle(color: mutedInk),
+                ),
+              )
+            else
+              ...group.contacts.map((contact) {
+                final source =
+                    eventNames[contact.sourceEventId] ?? contact.sourceNote;
+                final details = [
+                  contact.primaryEmail?.address ?? 'No email',
+                  if (contact.role != null) contact.role!,
+                  ?source,
+                ];
+                return Container(
+                  decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: borderColor)),
+                  ),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: const Color(0xFFEFE8FF),
+                      child: Text(
+                        _initials(contact.fullName),
+                        style: const TextStyle(
+                          color: brandPurple,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      contact.fullName,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          details.join(' · '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (contact.segments.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 5),
+                            child: Wrap(
+                              spacing: 5,
+                              runSpacing: 4,
+                              children: contact.segments
+                                  .map(
+                                    (segment) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEFE8FF),
+                                        borderRadius: BorderRadius.circular(9),
+                                      ),
+                                      child: Text(
+                                        segment,
+                                        style: const TextStyle(
+                                          color: brandPurple,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ),
+                      ],
+                    ),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'linkedin') {
+                          openExternalLink(contact.linkedinUrl!);
+                        } else if (value == 'edit') {
+                          onEdit(contact);
+                        } else {
+                          onDelete(contact);
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        if (contact.linkedinUrl != null)
+                          const PopupMenuItem(
+                            value: 'linkedin',
+                            child: Text('Open LinkedIn'),
+                          ),
+                        const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _initials(String name) => name
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .take(2)
+      .map((part) => part[0].toUpperCase())
+      .join();
 }
 
 class _ContactHeader extends StatelessWidget {
