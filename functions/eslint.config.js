@@ -10,6 +10,7 @@ module.exports = [
         exports: "writable",
         module: "writable",
         require: "readonly",
+        process: "readonly",
       },
     },
     rules: {

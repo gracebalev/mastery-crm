@@ -16,7 +16,7 @@ class ContactController extends ChangeNotifier {
     'Full name',
     'Primary email',
     'Role',
-    'Event / Source',
+    'Event',
     'LinkedIn URL',
     'Segments',
     'Include in email outreach',
@@ -91,7 +91,7 @@ class ContactController extends ChangeNotifier {
                     ) &&
                     _matchesFilter('Role', contact.role ?? '') &&
                     _matchesFilter(
-                      'Event / Source',
+                      'Event',
                       '${eventName(contact.sourceEventId)} ${contact.sourceNote ?? ''}',
                     ) &&
                     _matchesFilter('LinkedIn', contact.linkedinUrl ?? '') &&
@@ -280,6 +280,11 @@ class ContactController extends ChangeNotifier {
       final company = cell('Company');
       final fullName = cell('Full name');
       final email = normalizeEmail(cell('Primary email'));
+      final eventColumn = hasColumn('Event')
+          ? 'Event'
+          : hasColumn('Event / Source')
+          ? 'Event / Source'
+          : null;
       if (company.isEmpty || fullName.isEmpty) {
         skipped++;
         errors.add('Row ${rowIndex + 1}: Company and Full name are required.');
@@ -314,13 +319,12 @@ class ContactController extends ChangeNotifier {
         emails: emailState.emails,
         primaryEmailId: emailState.primaryEmailId,
         role: hasColumn('Role') ? _blankToNull(cell('Role')) : current?.role,
-        sourceEventId: hasColumn('Event / Source')
-            ? _eventIdByName(cell('Event / Source')) ?? current?.sourceEventId
+        sourceEventId: eventColumn != null
+            ? _eventIdByName(cell(eventColumn)) ?? current?.sourceEventId
             : current?.sourceEventId,
         sourceNote:
-            hasColumn('Event / Source') &&
-                _eventIdByName(cell('Event / Source')) == null
-            ? _blankToNull(cell('Event / Source'))
+            eventColumn != null && _eventIdByName(cell(eventColumn)) == null
+            ? _blankToNull(cell(eventColumn))
             : current?.sourceNote,
         linkedinUrl: hasColumn('LinkedIn URL')
             ? _blankToNull(cell('LinkedIn URL'))

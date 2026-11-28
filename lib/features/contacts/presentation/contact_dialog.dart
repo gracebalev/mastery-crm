@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../domain/business_card_draft.dart';
 import '../domain/entities.dart';
 import 'contact_controller.dart';
 
@@ -10,6 +11,7 @@ Future<bool> showContactDialog({
   Contact? contact,
   Company? initialCompany,
   String? initialEventId,
+  BusinessCardDraft? initialDraft,
 }) async {
   final result = await showDialog<bool>(
     context: context,
@@ -19,6 +21,7 @@ Future<bool> showContactDialog({
       contact: contact,
       initialCompany: initialCompany,
       initialEventId: initialEventId,
+      initialDraft: initialDraft,
     ),
   );
   return result ?? false;
@@ -30,11 +33,13 @@ class _ContactDialog extends StatefulWidget {
     this.contact,
     this.initialCompany,
     this.initialEventId,
+    this.initialDraft,
   });
   final ContactController controller;
   final Contact? contact;
   final Company? initialCompany;
   final String? initialEventId;
+  final BusinessCardDraft? initialDraft;
 
   @override
   State<_ContactDialog> createState() => _ContactDialogState();
@@ -62,24 +67,51 @@ class _ContactDialogState extends State<_ContactDialog> {
   void initState() {
     super.initState();
     final contact = widget.contact;
+    final draft = widget.initialDraft;
     final company = contact == null
-        ? widget.initialCompany
+        ? widget.initialCompany ??
+              widget.controller.companies
+                  .where(
+                    (item) =>
+                        item.name.trim().toLowerCase() ==
+                        draft?.company.trim().toLowerCase(),
+                  )
+                  .firstOrNull
         : widget.controller.companies
               .where((item) => item.id == contact.companyId)
               .firstOrNull;
-    _name = TextEditingController(text: contact?.fullName ?? '');
-    _company = TextEditingController(text: company?.name ?? '');
+    _name = TextEditingController(
+      text: contact?.fullName ?? draft?.fullName ?? '',
+    );
+    _company = TextEditingController(
+      text: company?.name ?? draft?.company ?? '',
+    );
     _companyId = company?.id;
-    _role = TextEditingController(text: contact?.role ?? '');
+    _role = TextEditingController(text: contact?.role ?? draft?.role ?? '');
     _sourceNote = TextEditingController(text: contact?.sourceNote ?? '');
     _sourceEventId = contact?.sourceEventId ?? widget.initialEventId;
-    _linkedin = TextEditingController(text: contact?.linkedinUrl ?? '');
+    _linkedin = TextEditingController(
+      text: contact?.linkedinUrl ?? draft?.linkedinUrl ?? '',
+    );
     _segments.addAll(contact?.segments ?? const []);
     _canReceiveCampaignEmails = contact?.canReceiveCampaignEmails ?? false;
     if (contact == null) {
-      final email = _newEmail();
-      _emails.add(email);
-      _primaryEmailId = email.id;
+      if (draft != null && draft.emails.isNotEmpty) {
+        for (final address in draft.emails) {
+          _emails.add(
+            _EmailEditor(
+              id: 'email_${DateTime.now().microsecondsSinceEpoch}_${_emailSequence++}',
+              address: address,
+              label: _emails.isEmpty ? 'Work' : '',
+            ),
+          );
+        }
+        _primaryEmailId = _emails.first.id;
+      } else {
+        final email = _newEmail();
+        _emails.add(email);
+        _primaryEmailId = email.id;
+      }
     } else {
       _emails.addAll(
         contact.emails.map(

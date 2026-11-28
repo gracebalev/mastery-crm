@@ -5,6 +5,7 @@ import '../../../app/theme/app_theme.dart';
 import '../../../core/utils/csv_file_io.dart';
 import '../../../core/utils/external_link.dart';
 import '../domain/contact_repository.dart';
+import '../domain/business_card_draft.dart';
 import '../domain/entities.dart';
 import '../../events/domain/event_repository.dart';
 import 'contact_controller.dart';
@@ -20,10 +21,10 @@ class ContactsPage extends StatefulWidget {
   final EventRepository eventRepository;
 
   @override
-  State<ContactsPage> createState() => _ContactsPageState();
+  State<ContactsPage> createState() => ContactsPageState();
 }
 
-class _ContactsPageState extends State<ContactsPage> {
+class ContactsPageState extends State<ContactsPage> {
   late final ContactController _controller;
   final Set<String> _collapsedCompanyIds = {};
   bool _isImporting = false;
@@ -42,6 +43,12 @@ class _ContactsPageState extends State<ContactsPage> {
     _controller.dispose();
     super.dispose();
   }
+
+  Future<bool> openScannedContact(BusinessCardDraft draft) => showContactDialog(
+    context: context,
+    controller: _controller,
+    initialDraft: draft,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -215,7 +222,7 @@ class _ContactsPageState extends State<ContactsPage> {
       'Company',
       'Contact',
       'Role',
-      'Event / Source',
+      'Event',
       'LinkedIn',
       'Segment',
     ];
@@ -436,7 +443,7 @@ class _ContactsPageState extends State<ContactsPage> {
       'Company',
       'Contact',
       'Role',
-      'Event / Source',
+      'Event',
       'LinkedIn',
       'Segment',
     ];
