@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../data/business_card_image_importer.dart';
 import '../domain/business_card_draft.dart';
 import '../domain/entities.dart';
+import 'business_card_scanner_page.dart';
 import 'contact_controller.dart';
 
 Future<bool> showContactDialog({
@@ -53,6 +56,7 @@ class _ContactDialogState extends State<_ContactDialog> {
   late final TextEditingController _sourceNote;
   late final TextEditingController _linkedin;
   final _segment = TextEditingController();
+  final _cardImporter = BusinessCardImageImporter();
   final List<_EmailEditor> _emails = [];
   final List<String> _segments = [];
   String? _companyId;
@@ -60,8 +64,11 @@ class _ContactDialogState extends State<_ContactDialog> {
   String? _sourceEventId;
   bool _canReceiveCampaignEmails = false;
   bool _saving = false;
+  bool _parsingCard = false;
   String? _error;
+  String? _cardMessage;
   var _emailSequence = 0;
+  var _companyFieldVersion = 0;
 
   @override
   void initState() {
@@ -164,6 +171,10 @@ class _ContactDialogState extends State<_ContactDialog> {
                 child: ListView(
                   padding: const EdgeInsets.all(24),
                   children: [
+                    if (widget.contact == null) ...[
+                      _businessCardActions(),
+                      const SizedBox(height: 22),
+                    ],
                     _fieldLabel('FULL NAME', required: true),
                     TextFormField(
                       controller: _name,
@@ -173,6 +184,7 @@ class _ContactDialogState extends State<_ContactDialog> {
                     const SizedBox(height: 18),
                     _fieldLabel('COMPANY', required: true),
                     Autocomplete<Company>(
+                      key: ValueKey(_companyFieldVersion),
                       initialValue: TextEditingValue(text: _company.text),
                       displayStringForOption: (company) => company.name,
                       optionsBuilder: (value) {
@@ -436,6 +448,154 @@ class _ContactDialogState extends State<_ContactDialog> {
       ],
     ),
   );
+
+  Widget _businessCardActions() {
+    final canScan =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F3FF),
+        border: Border.all(color: const Color(0xFFDDD0FA)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Fill from a business card',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Recognized details fill empty fields so you can review them before saving.',
+            style: TextStyle(color: mutedInk, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              if (canScan)
+                ElevatedButton.icon(
+                  onPressed: _parsingCard ? null : _scanCard,
+                  icon: const Icon(Icons.document_scanner_outlined),
+                  label: const Text('Scan card'),
+                ),
+              OutlinedButton.icon(
+                onPressed: _parsingCard ? null : _chooseCardPhoto,
+                icon: _parsingCard
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.photo_library_outlined),
+                label: Text(
+                  _parsingCard
+                      ? 'Reading card...'
+                      : kIsWeb
+                      ? 'Upload business card'
+                      : 'Choose photo',
+                ),
+              ),
+            ],
+          ),
+          if (_cardMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _cardMessage!,
+              style: TextStyle(
+                color: _cardMessage!.startsWith('AI parsing')
+                    ? Theme.of(context).colorScheme.error
+                    : mutedInk,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _scanCard() async {
+    final draft = await Navigator.of(context).push<BusinessCardDraft>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const BusinessCardScannerPage(),
+      ),
+    );
+    if (draft != null && mounted) _applyDraft(draft);
+  }
+
+  Future<void> _chooseCardPhoto() async {
+    setState(() {
+      _parsingCard = true;
+      _cardMessage = null;
+    });
+    try {
+      final draft = await _cardImporter.pickFromGallery();
+      if (draft == null || !mounted) return;
+      _applyDraft(draft);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _cardMessage = error.toString().replaceFirst('Bad state: ', '');
+      });
+    } finally {
+      if (mounted) setState(() => _parsingCard = false);
+    }
+  }
+
+  void _applyDraft(BusinessCardDraft draft) {
+    setState(() {
+      if (_name.text.trim().isEmpty) _name.text = draft.fullName;
+      if (_role.text.trim().isEmpty) _role.text = draft.role;
+      if (_linkedin.text.trim().isEmpty) {
+        _linkedin.text = draft.linkedinUrl;
+      }
+      if (_company.text.trim().isEmpty && draft.company.isNotEmpty) {
+        _company.text = draft.company;
+        final knownCompany = widget.controller.companies
+            .where(
+              (item) =>
+                  item.name.trim().toLowerCase() ==
+                  draft.company.trim().toLowerCase(),
+            )
+            .firstOrNull;
+        _companyId = knownCompany?.id;
+        _companyFieldVersion += 1;
+      }
+      for (final address in draft.emails) {
+        if (_emails.any(
+          (email) =>
+              normalizeEmail(email.address.text) == normalizeEmail(address),
+        )) {
+          continue;
+        }
+        final empty = _emails
+            .where((email) => email.address.text.trim().isEmpty)
+            .firstOrNull;
+        if (empty != null) {
+          empty.address.text = address;
+          _primaryEmailId ??= empty.id;
+        } else {
+          final email = _EmailEditor(
+            id: 'email_${DateTime.now().microsecondsSinceEpoch}_${_emailSequence++}',
+            address: address,
+            label: _emails.isEmpty ? 'Work' : '',
+          );
+          _emails.add(email);
+          _primaryEmailId ??= email.id;
+        }
+      }
+      _cardMessage = draft.usedOfflineFallback
+          ? 'AI parsing is unavailable. Email and LinkedIn were filled locally.'
+          : 'Card details added. Review the fields before saving.';
+      _error = null;
+    });
+  }
 
   Widget _emailRow(_EmailEditor email) => Padding(
     padding: const EdgeInsets.only(bottom: 10),

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../domain/business_card_draft.dart';
@@ -22,6 +25,29 @@ class BusinessCardParser {
       return BusinessCardDraft.fromFunctionData(data, rawText: text);
     } on FirebaseFunctionsException catch (error) {
       throw StateError(error.message ?? 'Could not parse the business card.');
+    }
+  }
+
+  Future<BusinessCardDraft> parseImage(
+    Uint8List bytes, {
+    required String mimeType,
+  }) async {
+    if (bytes.isEmpty) throw StateError('The selected image is empty.');
+    try {
+      final response = await _functions
+          .httpsCallable('parseBusinessCardImage')
+          .call<Map<Object?, Object?>>({
+            'imageBase64': base64Encode(bytes),
+            'mimeType': mimeType,
+          });
+      final data = response.data.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
+      return BusinessCardDraft.fromFunctionData(data, rawText: '');
+    } on FirebaseFunctionsException catch (error) {
+      throw StateError(
+        error.message ?? 'Could not parse the business card image.',
+      );
     }
   }
 }
