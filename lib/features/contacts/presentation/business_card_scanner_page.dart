@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -21,6 +22,7 @@ class _BusinessCardScannerPageState extends State<BusinessCardScannerPage>
     with WidgetsBindingObserver {
   CameraController? _camera;
   late final BusinessCardParser _parser;
+  final ImagePicker _imagePicker = ImagePicker();
   bool _initializing = true;
   bool _processing = false;
   String? _error;
@@ -88,16 +90,37 @@ class _BusinessCardScannerPageState extends State<BusinessCardScannerPage>
   Future<void> _capture() async {
     final camera = _camera;
     if (_processing || camera == null || !camera.value.isInitialized) return;
+    try {
+      final photo = await camera.takePicture();
+      await _processImage(photo, deleteWhenDone: true);
+    } on Object catch (error) {
+      _showError(error.toString().replaceFirst('Bad state: ', ''));
+    }
+  }
+
+  Future<void> _pickFromGallery() async {
+    if (_processing) return;
+    try {
+      final photo = await _imagePicker.pickImage(source: ImageSource.gallery);
+      if (photo == null || !mounted) return;
+      await _processImage(photo, deleteWhenDone: false);
+    } on Object catch (error) {
+      _showError(error.toString().replaceFirst('Bad state: ', ''));
+    }
+  }
+
+  Future<void> _processImage(
+    XFile photo, {
+    required bool deleteWhenDone,
+  }) async {
     setState(() {
       _processing = true;
       _error = null;
       _progress = 'Reading card...';
     });
-    XFile? photo;
     var recognizedText = '';
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     try {
-      photo = await camera.takePicture();
       final result = await recognizer.processImage(
         InputImage.fromFilePath(photo.path),
       );
@@ -126,7 +149,7 @@ class _BusinessCardScannerPageState extends State<BusinessCardScannerPage>
     } finally {
       await recognizer.close();
       try {
-        if (photo != null) await deleteTemporaryFile(photo.path);
+        if (deleteWhenDone) await deleteTemporaryFile(photo.path);
       } on Object {
         // The temporary camera file can already be gone on some devices.
       }
@@ -250,29 +273,52 @@ class _BusinessCardScannerPageState extends State<BusinessCardScannerPage>
                     ),
                   )
                 else
-                  GestureDetector(
-                    onTap: _capture,
-                    child: Container(
-                      width: 74,
-                      height: 74,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                        border: Border.all(color: brandPurple, width: 6),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black38,
-                            blurRadius: 16,
-                            offset: Offset(0, 5),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _pickFromGallery,
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: const Text('Gallery'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor: Colors.black38,
+                          side: const BorderSide(
+                            color: Colors.white,
+                            width: 1.5,
                           ),
-                        ],
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.document_scanner_outlined,
-                        color: brandPurple,
-                        size: 30,
+                      const SizedBox(width: 18),
+                      GestureDetector(
+                        onTap: _capture,
+                        child: Container(
+                          width: 74,
+                          height: 74,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            border: Border.all(color: brandPurple, width: 6),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black38,
+                                blurRadius: 16,
+                                offset: Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.document_scanner_outlined,
+                            color: brandPurple,
+                            size: 30,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 if (_error != null && _camera == null) ...[
                   const SizedBox(height: 14),

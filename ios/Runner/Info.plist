@@ -4,6 +4,8 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Mastery CRM uses the camera to scan business cards and fill contact details.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Mastery CRM uses a selected business card photo to fill contact details.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
